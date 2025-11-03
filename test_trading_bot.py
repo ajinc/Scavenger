@@ -23,9 +23,9 @@ class TestTradingBot(unittest.TestCase):
 
     @patch('yfinance.Ticker')
     def test_get_current_price(self, mock_ticker):
-        # Mock the yfinance Ticker object and its info attribute
+        # Mock the yfinance Ticker object and its fast_info attribute
         mock_instance = MagicMock()
-        mock_instance.info = {'regularMarketPrice': 160.0}
+        mock_instance.fast_info.get.return_value = 160.0
         mock_ticker.return_value = mock_instance
 
         price = get_current_price('TEST')
@@ -49,10 +49,10 @@ class TestTradingBot(unittest.TestCase):
         mock_send_telegram_alert.assert_any_call('PDH: 150.0, PDL: 145.0 for TEST')
 
         # Price crosses PDH at 151.0
-        mock_send_telegram_alert.assert_any_call('Alert: TEST crossed above PDH at 151.0!')
+        mock_send_telegram_alert.assert_any_call('Alert: TEST crossed above PDH! Price: 151.0')
 
         # Price crosses PDL at 144.0
-        mock_send_telegram_alert.assert_any_call('Alert: TEST crossed below PDL at 144.0!')
+        mock_send_telegram_alert.assert_any_call('Alert: TEST crossed below PDL! Price: 144.0')
 
         # Total alerts: startup, pdh/pdl, pdh cross, pdl cross = 4
         self.assertEqual(mock_send_telegram_alert.call_count, 4)
