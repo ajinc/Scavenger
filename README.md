@@ -7,6 +7,7 @@ This project is a simple yet effective trading bot that monitors a stock's price
 - **Real-Time Price Monitoring:** Utilizes the `yfinance` library to fetch live stock data.
 - **PDH/PDL Strategy:** Implements a trading strategy based on the previous day's high and low.
 - **Telegram Alerts:** Sends instant notifications to a Telegram chat when a trading signal is generated.
+- **Flexible Stock Selection:** Allows you to specify the stock ticker to monitor via a command-line argument.
 - **Secure Configuration:** Manages sensitive information like API tokens using a `.env` file, ensuring they are not hardcoded in the source code.
 - **Tested:** Includes a suite of unit tests to verify the core logic of the application.
 
@@ -53,13 +54,19 @@ This project uses a `.env` file to handle sensitive information like your Telegr
 
 ## Usage
 
-To start the trading bot, run the following command:
+To start the trading bot, run the following command. You can use the `--ticker` argument to specify which stock to monitor. If you don't provide one, it will default to "AAPL".
 
+**Default (AAPL):**
 ```bash
 python trading_bot.py
 ```
 
-The bot will start monitoring the specified stock (the default is "AAPL") and send alerts to your Telegram chat when the price crosses the PDH or PDL.
+**Specify a Ticker (e.g., TSLA):**
+```bash
+python trading_bot.py --ticker TSLA
+```
+
+The bot will start monitoring the specified stock and send alerts to your Telegram chat when the price crosses the PDH or PDL.
 
 ## Testing
 

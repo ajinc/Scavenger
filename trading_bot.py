@@ -3,6 +3,7 @@ import pandas as pd
 import time
 import telegram
 import os
+import argparse
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -109,6 +110,8 @@ if __name__ == '__main__':
         print("ERROR: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set.")
         print("Please create a .env file and add your credentials there. See .env.example for reference.")
     else:
-        # You can change the stock ticker here
-        ticker = "AAPL"
-        check_strategy(ticker)
+        parser = argparse.ArgumentParser(description="PDH/PDL Trading Bot")
+        parser.add_argument('--ticker', type=str, default='AAPL', help='The stock ticker to monitor (e.g., AAPL, GOOGL, TSLA)')
+        args = parser.parse_args()
+
+        check_strategy(args.ticker)
