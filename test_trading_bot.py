@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 import pandas as pd
 import asyncio
-from trading_bot import get_pdh_pdl, get_current_price, check_strategy, send_telegram_alert
+from trading_bot import get_pdh_pdl, get_current_price, check_strategy
 
 class TestTradingBot(unittest.IsolatedAsyncioTestCase):
 
@@ -23,14 +23,38 @@ class TestTradingBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pdl, 145.0)
 
     @patch('yfinance.Ticker')
-    def test_get_current_price(self, mock_ticker):
-        # Mock the yfinance Ticker object and its fast_info attribute
+    def test_get_current_price_fast_info(self, mock_ticker):
+        # Mock the yfinance Ticker object
         mock_instance = MagicMock()
         mock_instance.fast_info.get.return_value = 160.0
         mock_ticker.return_value = mock_instance
 
         price = get_current_price('TEST')
         self.assertEqual(price, 160.0)
+
+    @patch('yfinance.Ticker')
+    def test_get_current_price_info(self, mock_ticker):
+        # Mock the yfinance Ticker object
+        mock_instance = MagicMock()
+        mock_instance.fast_info.get.return_value = None
+        mock_instance.info.get.return_value = 161.0
+        mock_ticker.return_value = mock_instance
+
+        price = get_current_price('TEST')
+        self.assertEqual(price, 161.0)
+
+    @patch('yfinance.Ticker')
+    def test_get_current_price_history(self, mock_ticker):
+        # Mock the yfinance Ticker object
+        mock_instance = MagicMock()
+        mock_instance.fast_info.get.return_value = None
+        mock_instance.info.get.return_value = None
+        mock_hist = pd.DataFrame({'Close': [162.0]})
+        mock_instance.history.return_value = mock_hist
+        mock_ticker.return_value = mock_instance
+
+        price = get_current_price('TEST')
+        self.assertEqual(price, 162.0)
 
     @patch('trading_bot.get_pdh_pdl')
     @patch('trading_bot.get_current_price')

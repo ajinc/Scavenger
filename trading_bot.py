@@ -48,12 +48,26 @@ def get_pdh_pdl(ticker):
 
 def get_current_price(ticker):
     """
-    Fetches the current price of a given stock.
+    Fetches the current price of a given stock using multiple methods for robustness.
     """
     stock = yf.Ticker(ticker)
-    # Use 'fast_info' for quicker price retrieval
+
+    # Method 1: Use 'fast_info' for a quick price check
     price = stock.fast_info.get('last_price')
-    return price
+    if price:
+        return price
+
+    # Method 2: Use the more detailed 'info' dictionary
+    price = stock.info.get('regularMarketPrice')
+    if price:
+        return price
+
+    # Method 3: Fetch the most recent history and get the last close price
+    hist = stock.history(period="1d")
+    if not hist.empty:
+        return hist['Close'].iloc[-1]
+
+    return None
 
 
 async def check_strategy(ticker):
