@@ -1,9 +1,10 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import pandas as pd
-from trading_bot import get_pdh_pdl, get_current_price, check_strategy
+import asyncio
+from trading_bot import get_pdh_pdl, get_current_price, check_strategy, send_telegram_alert
 
-class TestTradingBot(unittest.TestCase):
+class TestTradingBot(unittest.IsolatedAsyncioTestCase):
 
     @patch('yfinance.Ticker')
     def test_get_pdh_pdl(self, mock_ticker):
@@ -33,16 +34,16 @@ class TestTradingBot(unittest.TestCase):
 
     @patch('trading_bot.get_pdh_pdl')
     @patch('trading_bot.get_current_price')
-    @patch('trading_bot.send_telegram_alert')
-    @patch('time.sleep', return_value=None)
-    def test_check_strategy(self, mock_sleep, mock_send_telegram_alert, mock_get_current_price, mock_get_pdh_pdl):
+    @patch('trading_bot.send_telegram_alert', new_callable=AsyncMock)
+    @patch('asyncio.sleep', return_value=None)
+    async def test_check_strategy(self, mock_sleep, mock_send_telegram_alert, mock_get_current_price, mock_get_pdh_pdl):
         mock_get_pdh_pdl.return_value = (150.0, 145.0)
 
         # Simulate a sequence of prices, then raise an exception to stop the loop.
         mock_get_current_price.side_effect = [151.0, 152.0, 149.0, 144.0, 146.0, ValueError("Stop test")]
 
         with self.assertRaises(ValueError, msg="Stop test"):
-            check_strategy('TEST')
+            await check_strategy('TEST')
 
         # Initial calls: bot started, and PDH/PDL info
         mock_send_telegram_alert.assert_any_call('Trading bot started for TEST.')
