@@ -7,7 +7,7 @@ This project is a simple yet effective trading bot that monitors a stock's price
 - **Real-Time Price Monitoring:** Utilizes the `yfinance` library to fetch live stock data.
 - **PDH/PDL Strategy:** Implements a trading strategy based on the previous day's high and low.
 - **Telegram Alerts:** Sends instant notifications to a Telegram chat when a trading signal is generated.
-- **Secure Configuration:** Manages sensitive information like API tokens using environment variables, ensuring they are not hardcoded in the source code.
+- **Secure Configuration:** Manages sensitive information like API tokens using a `.env` file, ensuring they are not hardcoded in the source code.
 - **Tested:** Includes a suite of unit tests to verify the core logic of the application.
 
 ## Prerequisites
@@ -34,23 +34,22 @@ Before you begin, ensure you have the following:
 
 ## Configuration
 
-This project uses environment variables to handle sensitive information like your Telegram Bot Token and Chat ID.
+This project uses a `.env` file to handle sensitive information like your Telegram Bot Token and Chat ID.
 
-1.  **Set the environment variables:**
+1.  **Create a `.env` file:**
 
-    **On macOS/Linux:**
+    Copy the example file:
     ```bash
-    export TELEGRAM_BOT_TOKEN="your-bot-token"
-    export TELEGRAM_CHAT_ID="your-chat-id"
+    cp .env.example .env
     ```
 
-    **On Windows:**
-    ```powershell
-    $env:TELEGRAM_BOT_TOKEN="your-bot-token"
-    $env:TELEGRAM_CHAT_ID="your-chat-id"
-    ```
+2.  **Add your credentials:**
 
-    Replace `"your-bot-token"` and `"your-chat-id"` with your actual credentials.
+    Open the `.env` file and replace the placeholder values with your actual credentials:
+    ```
+    TELEGRAM_BOT_TOKEN="your-bot-token"
+    TELEGRAM_CHAT_ID="your-chat-id"
+    ```
 
 ## Usage
 

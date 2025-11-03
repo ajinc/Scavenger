@@ -3,6 +3,10 @@ import pandas as pd
 import time
 import telegram
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Telegram Bot Configuration ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -45,7 +49,9 @@ def get_current_price(ticker):
     Fetches the current price of a given stock.
     """
     stock = yf.Ticker(ticker)
-    return stock.info.get('regularMarketPrice')
+    # Use 'fast_info' for quicker price retrieval
+    price = stock.fast_info.get('last_price')
+    return price
 
 
 def check_strategy(ticker):
@@ -61,7 +67,7 @@ def check_strategy(ticker):
         send_telegram_alert(message)
         return
 
-    message = f"PDH: {pdh}, PDL: {pdl} for {ticker}"
+    message = f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)} for {ticker}"
     print(message)
     send_telegram_alert(message)
 
@@ -75,22 +81,24 @@ def check_strategy(ticker):
             time.sleep(60)
             continue
 
-        print(f"Current price for {ticker}: {current_price}")
+        print(f"Current price for {ticker}: {round(current_price, 2)}")
 
         if current_price > pdh and not alerted_pdh_cross:
-            message = f"Alert: {ticker} crossed above PDH at {current_price}!"
+            message = f"Alert: {ticker} crossed above PDH! Price: {round(current_price, 2)}"
             print(message)
             send_telegram_alert(message)
             alerted_pdh_cross = True
         elif current_price < pdh:
+            # Reset the flag if the price drops back below the PDH
             alerted_pdh_cross = False
 
         if current_price < pdl and not alerted_pdl_cross:
-            message = f"Alert: {ticker} crossed below PDL at {current_price}!"
+            message = f"Alert: {ticker} crossed below PDL! Price: {round(current_price, 2)}"
             print(message)
             send_telegram_alert(message)
             alerted_pdl_cross = True
         elif current_price > pdl:
+            # Reset the flag if the price rises back above the PDL
             alerted_pdl_cross = False
 
         time.sleep(60) # Wait for 60 seconds before checking again
@@ -98,7 +106,9 @@ def check_strategy(ticker):
 
 if __name__ == '__main__':
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Please set the TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables.")
+        print("ERROR: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set.")
+        print("Please create a .env file and add your credentials there. See .env.example for reference.")
     else:
-        ticker = "AAPL"  # Example ticker
+        # You can change the stock ticker here
+        ticker = "AAPL"
         check_strategy(ticker)
