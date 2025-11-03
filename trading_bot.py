@@ -70,20 +70,21 @@ def get_current_price(ticker):
     return None
 
 
-async def check_strategy(ticker):
+async def check_strategy(ticker, suffix):
     """
     Checks the trading strategy for a given stock.
     """
-    await send_telegram_alert(f"Trading bot started for {ticker}.")
+    full_ticker = f"{ticker}{suffix}"
+    await send_telegram_alert(f"Trading bot started for {full_ticker}.")
 
-    pdh, pdl = get_pdh_pdl(ticker)
+    pdh, pdl = get_pdh_pdl(full_ticker)
     if not pdh or not pdl:
-        message = f"Could not retrieve PDH/PDL for {ticker}"
+        message = f"Could not retrieve PDH/PDL for {full_ticker}"
         print(message)
         await send_telegram_alert(message)
         return
 
-    message = f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)} for {ticker}"
+    message = f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)} for {full_ticker}"
     print(message)
     await send_telegram_alert(message)
 
@@ -91,16 +92,16 @@ async def check_strategy(ticker):
     alerted_pdl_cross = False
 
     while True:
-        current_price = get_current_price(ticker)
+        current_price = get_current_price(full_ticker)
         if current_price is None:
-            print(f"Could not fetch current price for {ticker}. Skipping this iteration.")
+            print(f"Could not fetch current price for {full_ticker}. Skipping this iteration.")
             await asyncio.sleep(60)
             continue
 
-        print(f"Current price for {ticker}: {round(current_price, 2)}")
+        print(f"Current price for {full_ticker}: {round(current_price, 2)}")
 
         if current_price > pdh and not alerted_pdh_cross:
-            message = f"Alert: {ticker} crossed above PDH! Price: {round(current_price, 2)}"
+            message = f"Alert: {full_ticker} crossed above PDH! Price: {round(current_price, 2)}"
             print(message)
             await send_telegram_alert(message)
             alerted_pdh_cross = True
@@ -109,7 +110,7 @@ async def check_strategy(ticker):
             alerted_pdh_cross = False
 
         if current_price < pdl and not alerted_pdl_cross:
-            message = f"Alert: {ticker} crossed below PDL! Price: {round(current_price, 2)}"
+            message = f"Alert: {full_ticker} crossed below PDL! Price: {round(current_price, 2)}"
             print(message)
             await send_telegram_alert(message)
             alerted_pdl_cross = True
@@ -126,7 +127,8 @@ if __name__ == '__main__':
         print("Please create a .env file and add your credentials there. See .env.example for reference.")
     else:
         parser = argparse.ArgumentParser(description="PDH/PDL Trading Bot")
-        parser.add_argument('--ticker', type=str, default='AAPL', help='The stock ticker to monitor (e.g., AAPL, GOOGL, TSLA)')
+        parser.add_argument('--ticker', type=str, default='AAPL', help='The stock ticker to monitor (e.g., AAPL, GOOGL, TATACAP)')
+        parser.add_argument('--suffix', type=str, default='', help='The exchange suffix for the ticker (e.g., .NS for NSE)')
         args = parser.parse_args()
 
-        asyncio.run(check_strategy(args.ticker))
+        asyncio.run(check_strategy(args.ticker, args.suffix))

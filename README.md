@@ -7,6 +7,7 @@ This project is a simple yet effective trading bot that monitors a stock's price
 - **Real-Time Price Monitoring:** Utilizes the `yfinance` library to fetch live stock data.
 - **PDH/PDL Strategy:** Implements a trading strategy based on the previous day's high and low.
 - **Telegram Alerts:** Sends instant notifications to a Telegram chat when a trading signal is generated.
+- **Global Stock Support:** Allows you to monitor stocks on international exchanges by specifying a market suffix.
 - **Flexible Stock Selection:** Allows you to specify the stock ticker to monitor via a command-line argument.
 - **Secure Configuration:** Manages sensitive information like API tokens using a `.env` file, ensuring they are not hardcoded in the source code.
 - **Tested:** Includes a suite of unit tests to verify the core logic of the application.
@@ -54,17 +55,24 @@ This project uses a `.env` file to handle sensitive information like your Telegr
 
 ## Usage
 
-To start the trading bot, run the following command. You can use the `--ticker` argument to specify which stock to monitor. If you don't provide one, it will default to "AAPL".
+To start the trading bot, run the following command. You can use the `--ticker` and `--suffix` arguments to specify the stock and its market.
 
-**Default (AAPL):**
+**Default (AAPL on NASDAQ):**
 ```bash
 python trading_bot.py
 ```
 
-**Specify a Ticker (e.g., TSLA):**
+**Specify a US Ticker (e.g., TSLA):**
 ```bash
 python trading_bot.py --ticker TSLA
 ```
+
+**Specify an Indian Ticker (e.g., TATACAP on NSE):**
+```bash
+python trading_bot.py --ticker TATACAP --suffix .NS
+```
+
+For stocks on other international exchanges, you will need to find the correct suffix. You can look up tickers and their suffixes on [Yahoo Finance](https://finance.yahoo.com/).
 
 The bot will start monitoring the specified stock and send alerts to your Telegram chat when the price crosses the PDH or PDL.
 
