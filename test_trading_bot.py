@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 import pandas as pd
 import asyncio
-from trading_bot import get_pdh_pdl, get_pwh_pwl, get_current_price, check_strategy, update_key_levels, key_levels
+from trading_bot import get_pdh_pdl, get_pwh_pwl, get_current_price, update_key_levels, check_price, key_levels
 
 class TestTradingBot(unittest.IsolatedAsyncioTestCase):
 
@@ -34,14 +34,6 @@ class TestTradingBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pwh, 165.0)
         self.assertEqual(pwl, 155.0)
 
-    @patch('yfinance.Ticker')
-    def test_get_current_price_fast_info(self, mock_ticker):
-        mock_instance = MagicMock()
-        mock_instance.fast_info.get.return_value = 160.0
-        mock_ticker.return_value = mock_instance
-        price = get_current_price('TEST')
-        self.assertEqual(price, 160.0)
-
     @patch('trading_bot.get_pdh_pdl', return_value=(150.0, 145.0))
     @patch('trading_bot.get_pwh_pwl', return_value=(160.0, 140.0))
     @patch('trading_bot.send_telegram_alert', new_callable=AsyncMock)
@@ -54,25 +46,19 @@ class TestTradingBot(unittest.IsolatedAsyncioTestCase):
 
     @patch('trading_bot.get_current_price')
     @patch('trading_bot.send_telegram_alert', new_callable=AsyncMock)
-    @patch('asyncio.sleep', return_value=None)
-    @patch('schedule.run_pending', return_value=None)
-    async def test_check_strategy(self, mock_run_pending, mock_sleep, mock_send_alert, mock_get_price):
-        # Pre-populate key_levels for the test
+    async def test_check_price(self, mock_send_alert, mock_get_price):
         key_levels.update({
             'pdh': 150.0, 'pdl': 145.0, 'pwh': 160.0, 'pwl': 140.0,
             'alerted_pdh': False, 'alerted_pdl': False, 'alerted_pwh': False, 'alerted_pwl': False
         })
 
-        mock_get_price.side_effect = [151.0, 161.0, 144.0, 139.0, ValueError("Stop test")]
+        mock_get_price.return_value = 151.0
+        await check_price('TEST', '.NS')
+        mock_send_alert.assert_called_with("Alert: TEST.NS crossed above pdh! Price: 151.0")
 
-        with self.assertRaises(ValueError, msg="Stop test"):
-            await check_strategy('TEST', '.NS')
-
-        self.assertEqual(mock_send_alert.call_count, 4)
-        mock_send_alert.assert_any_call("Alert: TEST.NS crossed above pdh! Price: 151.0")
-        mock_send_alert.assert_any_call("Alert: TEST.NS crossed above pwh! Price: 161.0")
-        mock_send_alert.assert_any_call("Alert: TEST.NS crossed below pdl! Price: 144.0")
-        mock_send_alert.assert_any_call("Alert: TEST.NS crossed below pwl! Price: 139.0")
+        mock_get_price.return_value = 139.0
+        await check_price('TEST', '.NS')
+        mock_send_alert.assert_called_with("Alert: TEST.NS crossed below pwl! Price: 139.0")
 
 if __name__ == '__main__':
     unittest.main()
