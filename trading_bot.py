@@ -6,7 +6,7 @@ import os
 import argparse
 import pytz
 from dotenv import load_dotenv
-from datetime import date, timedelta, datetime, time
+from datetime import date, timedelta, datetime
 
 # Load environment variables
 load_dotenv()
@@ -15,9 +15,6 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else None
-
-# --- Global State ---
-key_levels = {}
 
 # --- Telegram Alert ---
 async def send_telegram_alert(message):
@@ -35,20 +32,15 @@ def get_pdh_pdl(ticker):
     stock = yf.Ticker(ticker)
     hist = stock.history(period="2d")
     if len(hist) < 2: return None, None
-    prev_day = hist.iloc[-2]
-    return prev_day['High'], prev_day['Low']
+    return hist.iloc[-2]['High'], hist.iloc[-2]['Low']
 
-def get_previous_week_start_end():
+def get_pwh_pwl(ticker):
     today = date.today()
     start_week = today - timedelta(days=today.weekday())
     end_last_week = start_week - timedelta(days=1)
     start_last_week = end_last_week - timedelta(days=6)
-    return start_last_week, end_last_week
-
-def get_pwh_pwl(ticker):
     stock = yf.Ticker(ticker)
-    start, end = get_previous_week_start_end()
-    hist = stock.history(start=start, end=end)
+    hist = stock.history(start=start_last_week, end=end_last_week)
     if hist.empty: return None, None
     return hist['High'].max(), hist['Low'].min()
 
@@ -60,88 +52,88 @@ def get_current_price(ticker):
         if not hist.empty: price = hist['Close'].iloc[-1]
     return price
 
-# --- Core Logic ---
-async def update_key_levels(ticker, suffix):
-    full_ticker = f"{ticker}{suffix}"
-    pdh, pdl = get_pdh_pdl(full_ticker)
-    pwh, pwl = get_pwh_pwl(full_ticker)
+# --- Ticker State Management ---
+class TickerState:
+    def __init__(self, ticker, suffix):
+        self.full_ticker = f"{ticker}{suffix}"
+        self.levels = {}
+        self.alert_flags = {}
 
-    if not all([pdh, pdl, pwh, pwl]):
-        await send_telegram_alert(f"Could not retrieve key levels for {full_ticker}.")
-        return
+    async def update_levels(self):
+        pdh, pdl = get_pdh_pdl(self.full_ticker)
+        pwh, pwl = get_pwh_pwl(self.full_ticker)
 
-    key_levels.update({
-        'pdh': pdh, 'pdl': pdl, 'pwh': pwh, 'pwl': pwl,
-        'alerted_pdh': False, 'alerted_pdl': False, 'alerted_pwh': False, 'alerted_pwl': False
-    })
+        if not all([pdh, pdl, pwh, pwl]):
+            await send_telegram_alert(f"Could not retrieve key levels for {self.full_ticker}.")
+            return False
 
-    await send_telegram_alert(
-        f"Updated key levels for {full_ticker}:\n"
-        f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)}\n"
-        f"PWH: {round(pwh, 2)}, PWL: {round(pwl, 2)}"
-    )
+        self.levels = {'pdh': pdh, 'pdl': pdl, 'pwh': pwh, 'pwl': pwl}
+        self.alert_flags = {f"alerted_{k}": False for k in self.levels}
 
-async def check_price_periodically(ticker, suffix):
-    """Continuously checks the price against key levels every minute."""
-    while True:
-        if key_levels:
-            full_ticker = f"{ticker}{suffix}"
-            current_price = get_current_price(full_ticker)
-            if current_price is not None:
-                print(f"Current price for {full_ticker}: {round(current_price, 2)}")
-                for level_name in ['pdh', 'pdl', 'pwh', 'pwl']:
-                    level_val = key_levels.get(level_name)
-                    alert_flag = f"alerted_{level_name}"
+        await send_telegram_alert(
+            f"Updated key levels for {self.full_ticker}:\n"
+            f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)}\n"
+            f"PWH: {round(pwh, 2)}, PWL: {round(pwl, 2)}"
+        )
+        return True
 
-                    crossed_above = 'h' in level_name and current_price > level_val and not key_levels.get(alert_flag)
-                    crossed_below = 'l' in level_name and current_price < level_val and not key_levels.get(alert_flag)
+    async def check_price(self):
+        current_price = get_current_price(self.full_ticker)
+        if current_price is None: return
 
-                    if crossed_above or crossed_below:
-                        direction = "above" if crossed_above else "below"
-                        await send_telegram_alert(f"Alert: {full_ticker} crossed {direction} {level_name.upper()}! Price: {round(current_price, 2)}")
-                        key_levels[alert_flag] = True
+        print(f"Current price for {self.full_ticker}: {round(current_price, 2)}")
 
-                    elif 'h' in level_name and current_price < level_val: key_levels[alert_flag] = False
-                    elif 'l' in level_name and current_price > level_val: key_levels[alert_flag] = False
-        await asyncio.sleep(60)
+        for name, val in self.levels.items():
+            flag = f"alerted_{name}"
+            crossed_above = 'h' in name and current_price > val and not self.alert_flags[flag]
+            crossed_below = 'l' in name and current_price < val and not self.alert_flags[flag]
 
-async def daily_level_updater(ticker, suffix, market_open_time, tz):
-    """Recalculates key levels daily at market open."""
+            if crossed_above or crossed_below:
+                direction = "above" if crossed_above else "below"
+                await send_telegram_alert(f"Alert: {self.full_ticker} crossed {direction} {name.upper()}! Price: {round(current_price, 2)}")
+                self.alert_flags[flag] = True
+
+            elif 'h' in name and current_price < val: self.alert_flags[flag] = False
+            elif 'l' in name and current_price > val: self.alert_flags[flag] = False
+
+# --- Main Execution ---
+async def daily_updater(states, market_open_time, tz):
     while True:
         now = datetime.now(tz)
         market_open = now.replace(hour=market_open_time.hour, minute=market_open_time.minute, second=0, microsecond=0)
+        wait_seconds = (market_open - now).total_seconds()
+        if wait_seconds < 0: wait_seconds += 86400
 
-        wait_time = (market_open - now).total_seconds()
-        if wait_time < 0:
-            wait_time += 86400 # Move to next day
+        print(f"Waiting {wait_seconds / 3600:.2f} hours for the next market open.")
+        await asyncio.sleep(wait_seconds)
 
-        print(f"Waiting {wait_time / 3600:.2f} hours until next market open.")
-        await asyncio.sleep(wait_time)
+        await asyncio.gather(*(s.update_levels() for s in states))
 
-        await update_key_levels(ticker, suffix)
+async def price_checker(states):
+    while True:
+        await asyncio.gather(*(s.check_price() for s in states))
+        await asyncio.sleep(60)
 
-# --- Main Execution ---
 async def main(args):
-    await send_telegram_alert(f"Bot started for {args.ticker}{args.suffix}.")
+    await send_telegram_alert(f"Bot started for tickers: {', '.join(args.tickers)}.")
+
+    states = [TickerState(t, args.suffix) for t in args.tickers]
+    await asyncio.gather(*(s.update_levels() for s in states))
 
     market_tz = pytz.timezone(args.timezone)
     market_open_time = datetime.strptime(args.market_open, '%H:%M').time()
 
-    # Run initial level update
-    await update_key_levels(args.ticker, args.suffix)
+    updater_task = asyncio.create_task(daily_updater(states, market_open_time, market_tz))
+    checker_task = asyncio.create_task(price_checker(states))
 
-    # Start background tasks
-    price_checker_task = asyncio.create_task(check_price_periodically(args.ticker, args.suffix))
-    level_updater_task = asyncio.create_task(daily_level_updater(args.ticker, args.suffix, market_open_time, market_tz))
-
-    await asyncio.gather(price_checker_task, level_updater_task)
+    await asyncio.gather(updater_task, checker_task)
 
 if __name__ == '__main__':
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in a .env file.")
     else:
-        parser = argparse.ArgumentParser(description="Autonomous trading bot.")
-        parser.add_argument('--ticker', default='AAPL', help='Stock ticker.')
+        parser = argparse.ArgumentParser(description="Autonomous multi-stock trading bot.")
+        parser.add_argument('--tickers', nargs='+', default=['AAPL'], help='List of stock tickers.')
         parser.add_argument('--suffix', default='', help='Exchange suffix.')
         parser.add_argument('--market-open', default='09:15', help='Market open time (HH:MM).')
         parser.add_argument('--timezone', default='Asia/Kolkata', help='Market timezone.')
