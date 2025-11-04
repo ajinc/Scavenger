@@ -5,8 +5,10 @@ import telegram
 import os
 import argparse
 import asyncio
+import schedule
+import pytz
 from dotenv import load_dotenv
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,6 +22,9 @@ if TELEGRAM_BOT_TOKEN:
     bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 else:
     bot = None
+
+# --- Global State for Key Levels ---
+key_levels = {}
 
 async def send_telegram_alert(message):
     """
@@ -43,9 +48,7 @@ def get_pdh_pdl(ticker):
     if len(hist) < 2:
         return None, None
     previous_day = hist.iloc[-2]
-    pdh = previous_day['High']
-    pdl = previous_day['Low']
-    return pdh, pdl
+    return previous_day['High'], previous_day['Low']
 
 def get_previous_week_start_end():
     """
@@ -66,41 +69,25 @@ def get_pwh_pwl(ticker):
     hist = stock.history(start=start, end=end)
     if hist.empty:
         return None, None
-    pwh = hist['High'].max()
-    pwl = hist['Low'].min()
-    return pwh, pwl
+    return hist['High'].max(), hist['Low'].min()
 
 def get_current_price(ticker):
     """
     Fetches the current price of a given stock using multiple methods for robustness.
     """
     stock = yf.Ticker(ticker)
+    price = stock.fast_info.get('last_price') or stock.info.get('regularMarketPrice')
+    if not price:
+        hist = stock.history(period="1d")
+        if not hist.empty:
+            price = hist['Close'].iloc[-1]
+    return price
 
-    # Method 1: Use 'fast_info' for a quick price check
-    price = stock.fast_info.get('last_price')
-    if price:
-        return price
-
-    # Method 2: Use the more detailed 'info' dictionary
-    price = stock.info.get('regularMarketPrice')
-    if price:
-        return price
-
-    # Method 3: Fetch the most recent history and get the last close price
-    hist = stock.history(period="1d")
-    if not hist.empty:
-        return hist['Close'].iloc[-1]
-
-    return None
-
-
-async def check_strategy(ticker, suffix):
+async def update_key_levels(ticker, suffix):
     """
-    Checks the trading strategy for a given stock.
+    Recalculates and updates the key levels (PDH, PDL, PWH, PWL).
     """
     full_ticker = f"{ticker}{suffix}"
-    await send_telegram_alert(f"Trading bot started for {full_ticker}.")
-
     pdh, pdl = get_pdh_pdl(full_ticker)
     pwh, pwl = get_pwh_pwl(full_ticker)
 
@@ -110,73 +97,81 @@ async def check_strategy(ticker, suffix):
         await send_telegram_alert(message)
         return
 
+    key_levels.update({
+        'pdh': pdh, 'pdl': pdl, 'pwh': pwh, 'pwl': pwl,
+        'alerted_pdh': False, 'alerted_pdl': False, 'alerted_pwh': False, 'alerted_pwl': False
+    })
+
     message = (
-        f"Key levels for {full_ticker}:\n"
+        f"Updated key levels for {full_ticker} at market open:\n"
         f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)}\n"
         f"PWH: {round(pwh, 2)}, PWL: {round(pwl, 2)}"
     )
     print(message)
     await send_telegram_alert(message)
 
-    alerted_pdh_cross = False
-    alerted_pdl_cross = False
-    alerted_pwh_cross = False
-    alerted_pwl_cross = False
+async def check_strategy(ticker, suffix):
+    """
+    Continuously checks the price against the key levels and sends alerts.
+    """
+    full_ticker = f"{ticker}{suffix}"
 
     while True:
+        # Run pending scheduled tasks
+        schedule.run_pending()
+
         current_price = get_current_price(full_ticker)
-        if current_price is None:
-            print(f"Could not fetch current price for {full_ticker}. Skipping this iteration.")
+        if current_price is None or not key_levels:
             await asyncio.sleep(60)
             continue
 
         print(f"Current price for {full_ticker}: {round(current_price, 2)}")
 
-        # Daily high/low alerts
-        if current_price > pdh and not alerted_pdh_cross:
-            message = f"Alert: {full_ticker} crossed above PDH! Price: {round(current_price, 2)}"
-            print(message)
-            await send_telegram_alert(message)
-            alerted_pdh_cross = True
-        elif current_price < pdh:
-            alerted_pdh_cross = False
+        # Check against key levels
+        for level_name in ['pdh', 'pdl', 'pwh', 'pwl']:
+            level_value = key_levels[level_name]
+            alert_flag = f"alerted_{level_name}"
 
-        if current_price < pdl and not alerted_pdl_cross:
-            message = f"Alert: {full_ticker} crossed below PDL! Price: {round(current_price, 2)}"
-            print(message)
-            await send_telegram_alert(message)
-            alerted_pdl_cross = True
-        elif current_price > pdl:
-            alerted_pdl_cross = False
+            crossed_above = level_name.endswith('h') and current_price > level_value and not key_levels[alert_flag]
+            crossed_below = level_name.endswith('l') and current_price < level_value and not key_levels[alert_flag]
 
-        # Weekly high/low alerts
-        if current_price > pwh and not alerted_pwh_cross:
-            message = f"Alert: {full_ticker} crossed above PWH! Price: {round(current_price, 2)}"
-            print(message)
-            await send_telegram_alert(message)
-            alerted_pwh_cross = True
-        elif current_price < pwh:
-            alerted_pwh_cross = False
+            if crossed_above or crossed_below:
+                direction = "above" if crossed_above else "below"
+                message = f"Alert: {full_ticker} crossed {direction} {level_name.upper()}! Price: {round(current_price, 2)}"
+                print(message)
+                await send_telegram_alert(message)
+                key_levels[alert_flag] = True
 
-        if current_price < pwl and not alerted_pwl_cross:
-            message = f"Alert: {full_ticker} crossed below PWL! Price: {round(current_price, 2)}"
-            print(message)
-            await send_telegram_alert(message)
-            alerted_pwl_cross = True
-        elif current_price > pwl:
-            alerted_pwl_cross = False
+            # Reset flags if price moves back
+            elif level_name.endswith('h') and current_price < level_value:
+                key_levels[alert_flag] = False
+            elif level_name.endswith('l') and current_price > level_value:
+                key_levels[alert_flag] = False
 
         await asyncio.sleep(60)
 
 
 if __name__ == '__main__':
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("ERROR: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set.")
-        print("Please create a .env file and add your credentials there. See .env.example for reference.")
+        print("ERROR: Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in a .env file.")
     else:
-        parser = argparse.ArgumentParser(description="PDH/PDL Trading Bot")
-        parser.add_argument('--ticker', type=str, default='AAPL', help='The stock ticker to monitor (e.g., AAPL, GOOGL, TATACAP)')
-        parser.add_argument('--suffix', type=str, default='', help='The exchange suffix for the ticker (e.g., .NS for NSE)')
+        parser = argparse.ArgumentParser(description="A trading bot that sends alerts based on key daily and weekly levels.")
+        parser.add_argument('--ticker', default='AAPL', help='The stock ticker to monitor (e.g., AAPL, TATACAP).')
+        parser.add_argument('--suffix', default='', help='The exchange suffix (e.g., .NS for NSE).')
+        parser.add_argument('--market-open', default='09:15', help='Market open time in HH:MM format.')
+        parser.add_argument('--timezone', default='Asia/Kolkata', help='The timezone for the market open time.')
         args = parser.parse_args()
 
+        # Set the timezone
+        market_timezone = pytz.timezone(args.timezone)
+
+        # Schedule the daily recalculation of key levels
+        schedule.every().day.at(args.market_open, market_timezone).do(
+            lambda: asyncio.run(update_key_levels(args.ticker, args.suffix))
+        )
+
+        # Initial calculation
+        asyncio.run(update_key_levels(args.ticker, args.suffix))
+
+        # Start the main monitoring loop
         asyncio.run(check_strategy(args.ticker, args.suffix))
