@@ -29,6 +29,20 @@ class TestTradingBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pwh, 165.0)
         self.assertEqual(pwl, 155.0)
 
+    @patch('yfinance.Ticker')
+    def test_get_vwap(self, mock_ticker):
+        mock_hist = pd.DataFrame({
+            'High': [152.0, 152.5, 151.5],
+            'Low': [150.0, 150.5, 150.0],
+            'Close': [151.0, 151.5, 150.5],
+            'Volume': [1000, 1500, 1200]
+        })
+        mock_instance = MagicMock()
+        mock_instance.history.return_value = mock_hist
+        mock_ticker.return_value = mock_instance
+        vwap = get_vwap('TEST')
+        self.assertAlmostEqual(vwap, 151.19, places=2)
+
     @patch('trading_bot.get_pdh_pdl', return_value=(150.0, 145.0))
     @patch('trading_bot.get_pwh_pwl', return_value=(160.0, 140.0))
     @patch('trading_bot.send_telegram_alert', new_callable=AsyncMock)
@@ -48,16 +62,14 @@ class TestTradingBot(unittest.IsolatedAsyncioTestCase):
         state.levels = {'pdh': 150.0, 'pdl': 145.0}
         state.alert_flags = {f"alerted_{k}": False for k in state.levels}
 
-        # --- Test 1: Crossover with VWAP confirmation ---
         mock_get_price.return_value = 151.0
         mock_get_vwap.return_value = 150.5
         await state.check_price()
         mock_send_alert.assert_called_once()
 
-        # --- Test 2: Crossover WITHOUT VWAP confirmation ---
         mock_send_alert.reset_mock()
         mock_get_price.return_value = 152.0
-        mock_get_vwap.return_value = 152.5 # Price is below VWAP
+        mock_get_vwap.return_value = 152.5
         await state.check_price()
         mock_send_alert.assert_not_called()
 

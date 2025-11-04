@@ -1,6 +1,5 @@
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 import asyncio
 import telegram
 import os
@@ -54,14 +53,21 @@ def get_current_price(ticker):
     return price
 
 def get_vwap(ticker):
-    """Calculates the VWAP for a given ticker."""
+    """Calculates the VWAP for a given ticker manually."""
     stock = yf.Ticker(ticker)
     intraday_data = stock.history(period="1d", interval="1m")
     if intraday_data.empty:
         return None
 
-    intraday_data.ta.vwap(append=True)
-    return intraday_data.iloc[-1]['VWAP_D']
+    # Calculate typical price, cumulative volume, and cumulative typical price x volume
+    intraday_data['Typical Price'] = (intraday_data['High'] + intraday_data['Low'] + intraday_data['Close']) / 3
+    intraday_data['Cumulative Volume'] = intraday_data['Volume'].cumsum()
+    intraday_data['Cumulative TPxV'] = (intraday_data['Typical Price'] * intraday_data['Volume']).cumsum()
+
+    # Calculate VWAP
+    intraday_data['VWAP'] = intraday_data['Cumulative TPxV'] / intraday_data['Cumulative Volume']
+
+    return intraday_data.iloc[-1]['VWAP']
 
 # --- Ticker State Management ---
 class TickerState:
@@ -101,7 +107,6 @@ class TickerState:
         for name, val in self.levels.items():
             flag = f"alerted_{name}"
 
-            # VWAP Confirmed Crossover Logic
             crossed_above = 'h' in name and current_price > val and not self.alert_flags[flag] and current_price > vwap
             crossed_below = 'l' in name and current_price < val and not self.alert_flags[flag] and current_price < vwap
 
