@@ -7,7 +7,7 @@ import argparse
 import pytz
 from scipy.signal import find_peaks
 from dotenv import load_dotenv
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, time
 
 # Load environment variables
 load_dotenv()
@@ -132,6 +132,68 @@ class LevelsStrategy(Strategy):
         if hist.empty: return None, None
         return hist['High'].max(), hist['Low'].min()
 
+# --- ORB Strategy ---
+class OrbStrategy(Strategy):
+    async def update_levels(self):
+        """Calculates the opening range high and low."""
+        tz = pytz.timezone(self.args.timezone)
+        market_open = datetime.strptime(self.args.market_open, '%H:%M').time()
+
+        now = datetime.now(tz).time()
+        orb_end_time = (datetime.combine(date.today(), market_open) + timedelta(minutes=self.args.orb_minutes)).time()
+
+        if now < orb_end_time:
+            wait_seconds = (datetime.combine(date.today(), orb_end_time) - datetime.combine(date.today(), now)).total_seconds()
+            print(f"Waiting {wait_seconds / 60:.2f} minutes for opening range to form.")
+            await asyncio.sleep(wait_seconds)
+
+        intraday_data = yf.Ticker(self.ts.full_ticker).history(period="1d", interval="1m")
+        if intraday_data.empty:
+            await send_telegram_alert(f"Could not fetch intraday data for {self.ts.full_ticker}.")
+            return False
+
+        opening_range_data = intraday_data.between_time(market_open, orb_end_time)
+        if opening_range_data.empty:
+            await send_telegram_alert(f"No data for opening range for {self.ts.full_ticker}.")
+            return False
+
+        orb_high = opening_range_data['High'].max()
+        orb_low = opening_range_data['Low'].min()
+
+        self.ts.levels = {'orb_high': orb_high, 'orb_low': orb_low}
+        self.ts.alert_flags = {f"alerted_{k}": False for k in self.ts.levels}
+
+        await send_telegram_alert(
+            f"Opening range for {self.ts.full_ticker} ({self.args.orb_minutes} mins):\n"
+            f"High: {round(orb_high, 2)}, Low: {round(orb_low, 2)}"
+        )
+        return True
+
+    async def check_price(self):
+        price = get_current_price(self.ts.full_ticker)
+        vwap = get_vwap(self.ts.full_ticker)
+
+        if price is None or vwap is None: return
+
+        orb_high = self.ts.levels.get('orb_high')
+        orb_low = self.ts.levels.get('orb_low')
+
+        if not all([orb_high, orb_low]): return
+
+        if price > orb_high and not self.ts.alert_flags['alerted_orb_high'] and price > vwap:
+            await send_telegram_alert(
+                f"Alert: {self.ts.full_ticker} broke above opening range with VWAP confirmation!\n"
+                f"Price: {round(price, 2)}, VWAP: {round(vwap, 2)}"
+            )
+            self.ts.alert_flags['alerted_orb_high'] = True
+
+        elif price < orb_low and not self.ts.alert_flags['alerted_orb_low'] and price < vwap:
+            await send_telegram_alert(
+                f"Alert: {self.ts.full_ticker} broke below opening range with VWAP confirmation!\n"
+                f"Price: {round(price, 2)}, VWAP: {round(vwap, 2)}"
+            )
+            self.ts.alert_flags['alerted_orb_low'] = True
+
 # --- Ticker State ---
 class TickerState:
     def __init__(self, ticker, suffix, strategy_class, args):
@@ -156,7 +218,7 @@ async def price_checker(states):
         await asyncio.sleep(60)
 
 async def main(args):
-    strategy_map = {"levels": LevelsStrategy}
+    strategy_map = {"levels": LevelsStrategy, "orb": OrbStrategy}
     strategy_class = strategy_map.get(args.strategy)
     if not strategy_class:
         print(f"Unknown strategy: {args.strategy}")
@@ -164,7 +226,6 @@ async def main(args):
 
     await send_telegram_alert(f"Bot starting with '{args.strategy}' strategy for: {', '.join(args.tickers)}.")
 
-    # Send swing levels at startup
     for ticker in args.tickers:
         full_ticker = f"{ticker}{args.suffix}"
         swing_highs, swing_lows = get_swing_levels(full_ticker)
@@ -193,11 +254,12 @@ if __name__ == '__main__':
         print("ERROR: Missing Telegram credentials in .env file.")
     else:
         parser = argparse.ArgumentParser(description="A multi-strategy, multi-stock trading bot.")
-        parser.add_argument('--strategy', default='levels', choices=['levels'], help='The trading strategy to use.')
+        parser.add_argument('--strategy', default='levels', choices=['levels', 'orb'], help='The trading strategy to use.')
         parser.add_argument('--tickers', nargs='+', default=['AAPL'], help='List of stock tickers.')
         parser.add_argument('--suffix', default='', help='Exchange suffix for tickers.')
         parser.add_argument('--market-open', default='09:15', help='Market open time (HH:MM).')
         parser.add_argument('--timezone', default='Asia/Kolkata', help='Timezone for the market.')
+        parser.add_argument('--orb-minutes', type=int, default=15, help='Opening range breakout in minutes.')
         args = parser.parse_args()
 
         try:
