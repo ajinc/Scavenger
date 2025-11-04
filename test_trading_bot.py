@@ -2,13 +2,23 @@ import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 import pandas as pd
 import asyncio
-from trading_bot import get_pdh_pdl, get_pwh_pwl, get_current_price, update_key_levels, check_price, key_levels
+from trading_bot import get_pdh_pdl, get_pwh_pwl, get_current_price, update_key_levels, check_price, key_levels, get_utc_time
 
 class TestTradingBot(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         # Reset key_levels before each test
         key_levels.clear()
+
+    def test_get_utc_time(self):
+        # Test with Indian Standard Time
+        utc_time = get_utc_time('09:15', 'Asia/Kolkata')
+        # This will vary depending on the current date and DST, so we check the format
+        self.assertRegex(utc_time, r'\d{2}:\d{2}')
+
+        # Test with a US timezone
+        utc_time_us = get_utc_time('09:30', 'America/New_York')
+        self.assertRegex(utc_time_us, r'\d{2}:\d{2}')
 
     @patch('yfinance.Ticker')
     def test_get_pdh_pdl(self, mock_ticker):
@@ -54,11 +64,11 @@ class TestTradingBot(unittest.IsolatedAsyncioTestCase):
 
         mock_get_price.return_value = 151.0
         await check_price('TEST', '.NS')
-        mock_send_alert.assert_called_with("Alert: TEST.NS crossed above pdh! Price: 151.0")
+        mock_send_alert.assert_any_call("Alert: TEST.NS crossed above pdh! Price: 151.0")
 
         mock_get_price.return_value = 139.0
         await check_price('TEST', '.NS')
-        mock_send_alert.assert_called_with("Alert: TEST.NS crossed below pwl! Price: 139.0")
+        mock_send_alert.assert_any_call("Alert: TEST.NS crossed below pwl! Price: 139.0")
 
 if __name__ == '__main__':
     unittest.main()

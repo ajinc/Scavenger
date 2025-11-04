@@ -7,7 +7,7 @@ import os
 import argparse
 import pytz
 from dotenv import load_dotenv
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +19,16 @@ bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else None
 
 # --- Global State ---
 key_levels = {}
+
+# --- Helper Functions ---
+def get_utc_time(local_time_str, timezone_str):
+    """Converts a local time string to UTC."""
+    local_tz = pytz.timezone(timezone_str)
+    local_time = datetime.strptime(local_time_str, '%H:%M').time()
+    today = date.today()
+    local_dt = local_tz.localize(datetime.combine(today, local_time))
+    utc_dt = local_dt.astimezone(pytz.utc)
+    return utc_dt.strftime('%H:%M')
 
 # --- Telegram Alert ---
 async def send_telegram_alert(message):
@@ -112,7 +122,8 @@ async def main(args):
     await update_key_levels(args.ticker, args.suffix)
 
     # Schedule jobs
-    aioschedule.every().day.at(args.market_open, pytz.timezone(args.timezone)).do(update_key_levels, args.ticker, args.suffix)
+    utc_market_open = get_utc_time(args.market_open, args.timezone)
+    aioschedule.every().day.at(utc_market_open).do(update_key_levels, args.ticker, args.suffix)
     aioschedule.every(1).minutes.do(check_price, args.ticker, args.suffix)
 
     while True:
