@@ -1,13 +1,12 @@
 import yfinance as yf
 import pandas as pd
 import asyncio
-import aioschedule
 import telegram
 import os
 import argparse
 import pytz
 from dotenv import load_dotenv
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, time
 
 # Load environment variables
 load_dotenv()
@@ -19,16 +18,6 @@ bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else None
 
 # --- Global State ---
 key_levels = {}
-
-# --- Helper Functions ---
-def get_utc_time(local_time_str, timezone_str):
-    """Converts a local time string to UTC."""
-    local_tz = pytz.timezone(timezone_str)
-    local_time = datetime.strptime(local_time_str, '%H:%M').time()
-    today = date.today()
-    local_dt = local_tz.localize(datetime.combine(today, local_time))
-    utc_dt = local_dt.astimezone(pytz.utc)
-    return utc_dt.strftime('%H:%M')
 
 # --- Telegram Alert ---
 async def send_telegram_alert(message):
@@ -92,51 +81,68 @@ async def update_key_levels(ticker, suffix):
         f"PWH: {round(pwh, 2)}, PWL: {round(pwl, 2)}"
     )
 
-async def check_price(ticker, suffix):
-    full_ticker = f"{ticker}{suffix}"
-    current_price = get_current_price(full_ticker)
+async def check_price_periodically(ticker, suffix):
+    """Continuously checks the price against key levels every minute."""
+    while True:
+        if key_levels:
+            full_ticker = f"{ticker}{suffix}"
+            current_price = get_current_price(full_ticker)
+            if current_price is not None:
+                print(f"Current price for {full_ticker}: {round(current_price, 2)}")
+                for level_name in ['pdh', 'pdl', 'pwh', 'pwl']:
+                    level_val = key_levels.get(level_name)
+                    alert_flag = f"alerted_{level_name}"
 
-    if current_price is None or not key_levels:
-        return
+                    crossed_above = 'h' in level_name and current_price > level_val and not key_levels.get(alert_flag)
+                    crossed_below = 'l' in level_name and current_price < level_val and not key_levels.get(alert_flag)
 
-    print(f"Current price for {full_ticker}: {round(current_price, 2)}")
+                    if crossed_above or crossed_below:
+                        direction = "above" if crossed_above else "below"
+                        await send_telegram_alert(f"Alert: {full_ticker} crossed {direction} {level_name.upper()}! Price: {round(current_price, 2)}")
+                        key_levels[alert_flag] = True
 
-    for level_name in ['pdh', 'pdl', 'pwh', 'pwl']:
-        level_val = key_levels[level_name]
-        alert_flag = f"alerted_{level_name}"
+                    elif 'h' in level_name and current_price < level_val: key_levels[alert_flag] = False
+                    elif 'l' in level_name and current_price > level_val: key_levels[alert_flag] = False
+        await asyncio.sleep(60)
 
-        crossed_above = 'h' in level_name and current_price > level_val and not key_levels[alert_flag]
-        crossed_below = 'l' in level_name and current_price < level_val and not key_levels[alert_flag]
+async def daily_level_updater(ticker, suffix, market_open_time, tz):
+    """Recalculates key levels daily at market open."""
+    while True:
+        now = datetime.now(tz)
+        market_open = now.replace(hour=market_open_time.hour, minute=market_open_time.minute, second=0, microsecond=0)
 
-        if crossed_above or crossed_below:
-            direction = "above" if crossed_above else "below"
-            await send_telegram_alert(f"Alert: {full_ticker} crossed {direction} {level_name.upper()}! Price: {round(current_price, 2)}")
-            key_levels[alert_flag] = True
+        wait_time = (market_open - now).total_seconds()
+        if wait_time < 0:
+            wait_time += 86400 # Move to next day
 
-        elif 'h' in level_name and current_price < level_val: key_levels[alert_flag] = False
-        elif 'l' in level_name and current_price > level_val: key_levels[alert_flag] = False
+        print(f"Waiting {wait_time / 3600:.2f} hours until next market open.")
+        await asyncio.sleep(wait_time)
+
+        await update_key_levels(ticker, suffix)
 
 # --- Main Execution ---
 async def main(args):
     await send_telegram_alert(f"Bot started for {args.ticker}{args.suffix}.")
+
+    market_tz = pytz.timezone(args.timezone)
+    market_open_time = datetime.strptime(args.market_open, '%H:%M').time()
+
+    # Run initial level update
     await update_key_levels(args.ticker, args.suffix)
 
-    # Schedule jobs
-    utc_market_open = get_utc_time(args.market_open, args.timezone)
-    aioschedule.every().day.at(utc_market_open).do(lambda: asyncio.create_task(update_key_levels(args.ticker, args.suffix)))
-    aioschedule.every(1).minutes.do(lambda: asyncio.create_task(check_price(args.ticker, args.suffix)))
+    # Start background tasks
+    price_checker_task = asyncio.create_task(check_price_periodically(args.ticker, args.suffix))
+    level_updater_task = asyncio.create_task(daily_level_updater(args.ticker, args.suffix, market_open_time, market_tz))
 
-    while True:
-        await aioschedule.run_pending()
-        await asyncio.sleep(1)
+    await asyncio.gather(price_checker_task, level_updater_task)
 
 if __name__ == '__main__':
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in a .env file.")
     else:
         parser = argparse.ArgumentParser(description="Autonomous trading bot.")
-        parser.add_argument('--ticker', default='AAPL', help='Stock ticker (e.g., AAPL, TATACAP).')
-        parser.add_argument('--suffix', default='', help='Exchange suffix (e.g., .NS for NSE).')
+        parser.add_argument('--ticker', default='AAPL', help='Stock ticker.')
+        parser.add_argument('--suffix', default='', help='Exchange suffix.')
         parser.add_argument('--market-open', default='09:15', help='Market open time (HH:MM).')
         parser.add_argument('--timezone', default='Asia/Kolkata', help='Market timezone.')
         args = parser.parse_args()
