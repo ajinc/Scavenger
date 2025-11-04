@@ -1,11 +1,11 @@
-# PDH/PDL Trading Bot with Telegram Alerts
+# PDH/PDL and PWH/PWL Trading Bot with Telegram Alerts
 
-This project is a simple yet effective trading bot that monitors a stock's price based on the previous day's high (PDH) and low (PDL). When the current price of a specified stock crosses either of these key levels, the bot sends an alert to a designated Telegram chat.
+This project is a simple yet effective trading bot that monitors a stock's price based on key historical levels: the previous day's high (PDH) and low (PDL), and the previous week's high (PWH) and low (PWL). When the current price of a specified stock crosses any of these levels, the bot sends an alert to a designated Telegram chat.
 
 ## Features
 
+- **Multi-Level Strategy:** Implements a trading strategy based on both daily and weekly historical data (PDH, PDL, PWH, PWL).
 - **Real-Time Price Monitoring:** Utilizes the `yfinance` library to fetch live stock data.
-- **PDH/PDL Strategy:** Implements a trading strategy based on the previous day's high and low.
 - **Telegram Alerts:** Sends instant notifications to a Telegram chat when a trading signal is generated.
 - **Global Stock Support:** Allows you to monitor stocks on international exchanges by specifying a market suffix.
 - **Flexible Stock Selection:** Allows you to specify the stock ticker to monitor via a command-line argument.
@@ -74,7 +74,7 @@ python trading_bot.py --ticker TATACAP --suffix .NS
 
 For stocks on other international exchanges, you will need to find the correct suffix. You can look up tickers and their suffixes on [Yahoo Finance](https://finance.yahoo.com/).
 
-The bot will start monitoring the specified stock and send alerts to your Telegram chat when the price crosses the PDH or PDL.
+The bot will start monitoring the specified stock and send alerts to your Telegram chat when the price crosses the PDH, PDL, PWH, or PWL.
 
 ## Testing
 

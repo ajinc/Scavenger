@@ -6,6 +6,7 @@ import os
 import argparse
 import asyncio
 from dotenv import load_dotenv
+from datetime import date, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
@@ -46,6 +47,29 @@ def get_pdh_pdl(ticker):
     pdl = previous_day['Low']
     return pdh, pdl
 
+def get_previous_week_start_end():
+    """
+    Gets the start and end dates of the previous week.
+    """
+    today = date.today()
+    start_of_this_week = today - timedelta(days=today.weekday())
+    end_of_last_week = start_of_this_week - timedelta(days=1)
+    start_of_last_week = end_of_last_week - timedelta(days=6)
+    return start_of_last_week, end_of_last_week
+
+def get_pwh_pwl(ticker):
+    """
+    Fetches the previous week's high and low for a given stock.
+    """
+    stock = yf.Ticker(ticker)
+    start, end = get_previous_week_start_end()
+    hist = stock.history(start=start, end=end)
+    if hist.empty:
+        return None, None
+    pwh = hist['High'].max()
+    pwl = hist['Low'].min()
+    return pwh, pwl
+
 def get_current_price(ticker):
     """
     Fetches the current price of a given stock using multiple methods for robustness.
@@ -78,18 +102,26 @@ async def check_strategy(ticker, suffix):
     await send_telegram_alert(f"Trading bot started for {full_ticker}.")
 
     pdh, pdl = get_pdh_pdl(full_ticker)
-    if not pdh or not pdl:
-        message = f"Could not retrieve PDH/PDL for {full_ticker}"
+    pwh, pwl = get_pwh_pwl(full_ticker)
+
+    if not all([pdh, pdl, pwh, pwl]):
+        message = f"Could not retrieve key levels for {full_ticker}. Please check the ticker and suffix."
         print(message)
         await send_telegram_alert(message)
         return
 
-    message = f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)} for {full_ticker}"
+    message = (
+        f"Key levels for {full_ticker}:\n"
+        f"PDH: {round(pdh, 2)}, PDL: {round(pdl, 2)}\n"
+        f"PWH: {round(pwh, 2)}, PWL: {round(pwl, 2)}"
+    )
     print(message)
     await send_telegram_alert(message)
 
     alerted_pdh_cross = False
     alerted_pdl_cross = False
+    alerted_pwh_cross = False
+    alerted_pwl_cross = False
 
     while True:
         current_price = get_current_price(full_ticker)
@@ -100,13 +132,13 @@ async def check_strategy(ticker, suffix):
 
         print(f"Current price for {full_ticker}: {round(current_price, 2)}")
 
+        # Daily high/low alerts
         if current_price > pdh and not alerted_pdh_cross:
             message = f"Alert: {full_ticker} crossed above PDH! Price: {round(current_price, 2)}"
             print(message)
             await send_telegram_alert(message)
             alerted_pdh_cross = True
         elif current_price < pdh:
-            # Reset the flag if the price drops back below the PDH
             alerted_pdh_cross = False
 
         if current_price < pdl and not alerted_pdl_cross:
@@ -115,10 +147,26 @@ async def check_strategy(ticker, suffix):
             await send_telegram_alert(message)
             alerted_pdl_cross = True
         elif current_price > pdl:
-            # Reset the flag if the price rises back above the PDL
             alerted_pdl_cross = False
 
-        await asyncio.sleep(60) # Wait for 60 seconds before checking again
+        # Weekly high/low alerts
+        if current_price > pwh and not alerted_pwh_cross:
+            message = f"Alert: {full_ticker} crossed above PWH! Price: {round(current_price, 2)}"
+            print(message)
+            await send_telegram_alert(message)
+            alerted_pwh_cross = True
+        elif current_price < pwh:
+            alerted_pwh_cross = False
+
+        if current_price < pwl and not alerted_pwl_cross:
+            message = f"Alert: {full_ticker} crossed below PWL! Price: {round(current_price, 2)}"
+            print(message)
+            await send_telegram_alert(message)
+            alerted_pwl_cross = True
+        elif current_price > pwl:
+            alerted_pwl_cross = False
+
+        await asyncio.sleep(60)
 
 
 if __name__ == '__main__':
