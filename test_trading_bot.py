@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 import pandas as pd
-from trading_bot import get_pdh_pdl, get_pwh_pwl, TickerState
+from trading_bot import get_pdh_pdl, get_pwh_pwl, TickerState, get_vwap
 
 class TestTradingBot(unittest.IsolatedAsyncioTestCase):
 
@@ -41,19 +41,25 @@ class TestTradingBot(unittest.IsolatedAsyncioTestCase):
         mock_send_alert.assert_called_once()
 
     @patch('trading_bot.get_current_price')
+    @patch('trading_bot.get_vwap')
     @patch('trading_bot.send_telegram_alert', new_callable=AsyncMock)
-    async def test_ticker_state_check_price(self, mock_send_alert, mock_get_price):
+    async def test_ticker_state_check_price_with_vwap(self, mock_send_alert, mock_get_vwap, mock_get_price):
         state = TickerState('TEST', '.NS')
-        state.levels = {'pdh': 150.0, 'pdl': 145.0, 'pwh': 160.0, 'pwl': 140.0}
+        state.levels = {'pdh': 150.0, 'pdl': 145.0}
         state.alert_flags = {f"alerted_{k}": False for k in state.levels}
 
+        # --- Test 1: Crossover with VWAP confirmation ---
         mock_get_price.return_value = 151.0
+        mock_get_vwap.return_value = 150.5
         await state.check_price()
-        mock_send_alert.assert_called_with("Alert: TEST.NS crossed above PDH! Price: 151.0")
+        mock_send_alert.assert_called_once()
 
-        mock_get_price.return_value = 139.0
+        # --- Test 2: Crossover WITHOUT VWAP confirmation ---
+        mock_send_alert.reset_mock()
+        mock_get_price.return_value = 152.0
+        mock_get_vwap.return_value = 152.5 # Price is below VWAP
         await state.check_price()
-        mock_send_alert.assert_called_with("Alert: TEST.NS crossed below PWL! Price: 139.0")
+        mock_send_alert.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

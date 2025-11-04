@@ -1,5 +1,6 @@
 import yfinance as yf
 import pandas as pd
+import pandas_ta as ta
 import asyncio
 import telegram
 import os
@@ -52,6 +53,16 @@ def get_current_price(ticker):
         if not hist.empty: price = hist['Close'].iloc[-1]
     return price
 
+def get_vwap(ticker):
+    """Calculates the VWAP for a given ticker."""
+    stock = yf.Ticker(ticker)
+    intraday_data = stock.history(period="1d", interval="1m")
+    if intraday_data.empty:
+        return None
+
+    intraday_data.ta.vwap(append=True)
+    return intraday_data.iloc[-1]['VWAP_D']
+
 # --- Ticker State Management ---
 class TickerState:
     def __init__(self, ticker, suffix):
@@ -79,18 +90,27 @@ class TickerState:
 
     async def check_price(self):
         current_price = get_current_price(self.full_ticker)
-        if current_price is None: return
+        vwap = get_vwap(self.full_ticker)
 
-        print(f"Current price for {self.full_ticker}: {round(current_price, 2)}")
+        if current_price is None or vwap is None:
+            print(f"Could not fetch price or VWAP for {self.full_ticker}. Skipping.")
+            return
+
+        print(f"Price: {round(current_price, 2)}, VWAP: {round(vwap, 2)} for {self.full_ticker}")
 
         for name, val in self.levels.items():
             flag = f"alerted_{name}"
-            crossed_above = 'h' in name and current_price > val and not self.alert_flags[flag]
-            crossed_below = 'l' in name and current_price < val and not self.alert_flags[flag]
+
+            # VWAP Confirmed Crossover Logic
+            crossed_above = 'h' in name and current_price > val and not self.alert_flags[flag] and current_price > vwap
+            crossed_below = 'l' in name and current_price < val and not self.alert_flags[flag] and current_price < vwap
 
             if crossed_above or crossed_below:
                 direction = "above" if crossed_above else "below"
-                await send_telegram_alert(f"Alert: {self.full_ticker} crossed {direction} {name.upper()}! Price: {round(current_price, 2)}")
+                await send_telegram_alert(
+                    f"Alert: {self.full_ticker} crossed {direction} {name.upper()} with VWAP confirmation!\n"
+                    f"Price: {round(current_price, 2)}, VWAP: {round(vwap, 2)}"
+                )
                 self.alert_flags[flag] = True
 
             elif 'h' in name and current_price < val: self.alert_flags[flag] = False

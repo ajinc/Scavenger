@@ -1,15 +1,16 @@
-# Fully Autonomous Multi-Stock Trading Bot with Telegram Alerts
+# Fully Autonomous Multi-Stock Trading Bot with VWAP Confirmation
 
-This project is a fully autonomous trading bot that monitors multiple stocks in parallel against key historical levels: the previous day's high (PDH) and low (PDL), and the previous week's high (PWH) and low (PWL). The bot runs continuously and automatically recalculates these levels for each stock at the start of each trading day. When the current price of a monitored stock crosses any of these levels, it sends an alert to a designated Telegram chat.
+This project is a fully autonomous trading bot that monitors multiple stocks in parallel against key historical levels, now with VWAP (Volume Weighted Average Price) confirmation. The bot tracks the previous day's high (PDH) and low (PDL), and the previous week's high (PWH) and low (PWL). When the price crosses one of these key levels, it now checks if the price is also above/below the VWAP before sending an alert, leading to higher-quality signals.
 
 ## Features
 
+- **VWAP Confirmation:** Alerts are filtered using the VWAP to provide stronger, more reliable trading signals.
 - **Multi-Stock Monitoring:** Track a whole watchlist of stocks in parallel.
 - **Fully Autonomous:** Runs continuously and automatically recalculates key levels daily.
 - **Multi-Level Strategy:** Uses both daily and weekly historical data (PDH, PDL, PWH, PWL).
 - **Configurable Market Timings:** Adaptable to any stock market with configurable open times and timezones.
-- **Real-Time Price Monitoring:** Utilizes the `yfinance` library for live stock data.
-- **Telegram Alerts:** Sends instant, specific notifications when a stock crosses a key level.
+- **Real-Time Price Monitoring:** Utilizes `yfinance` and `pandas-ta` for live price and indicator data.
+- **Telegram Alerts:** Sends instant, detailed notifications when a stock crosses a key level with VWAP confirmation.
 - **Global Stock Support:** Monitor stocks on international exchanges by specifying a market suffix.
 - **Secure Configuration:** Manages API tokens using a `.env` file.
 - **Tested:** Includes a suite of unit tests to verify the core logic.
@@ -38,14 +39,12 @@ This project is a fully autonomous trading bot that monitors multiple stocks in 
 To start the trading bot, run the following command. The bot will run continuously, so you can leave it running in a terminal or on a server.
 
 **For the Indian Market (Default):**
-The bot is pre-configured for the Indian market. To monitor multiple stocks on the NSE, use the `.NS` suffix.
 ```bash
 # Monitor TATACAP and RELIANCE on the NSE
 python trading_bot.py --tickers TATACAP RELIANCE --suffix .NS
 ```
 
 **For Other Markets (e.g., US Market):**
-You can configure the bot for any market by specifying the market open time and timezone.
 ```bash
 # Monitor TSLA, AAPL, and GOOGL on the NASDAQ
 python trading_bot.py --tickers TSLA AAPL GOOGL --market-open 09:30 --timezone America/New_York
