@@ -1,7 +1,33 @@
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 import pandas as pd
-from trading_bot import TickerState, LevelsStrategy, OrbStrategy
+from trading_bot import TickerState, LevelsStrategy, OrbStrategy, get_swing_levels
+
+class TestAnalysis(unittest.IsolatedAsyncioTestCase):
+
+    @patch('yfinance.Ticker')
+    def test_get_swing_levels(self, mock_yf_ticker):
+        # Create a mock DataFrame with clear swing points
+        mock_df = pd.DataFrame({
+            'High': [100, 110, 105, 120, 115, 130, 125],
+            'Low':  [90, 95, 92, 105, 100, 110, 108]
+        })
+
+        mock_instance = MagicMock()
+        mock_instance.history.return_value = mock_df
+        mock_yf_ticker.return_value = mock_instance
+
+        highs, lows = get_swing_levels('TEST', prominence=0.1)
+
+        # Check if the highest peaks are correctly identified
+        self.assertIn(130, highs)
+        self.assertIn(120, highs)
+        self.assertIn(110, highs)
+
+        # Check if the lowest troughs are correctly identified
+        self.assertIn(90, lows)
+        self.assertIn(92, lows)
+        self.assertIn(100, lows)
 
 class TestStrategies(unittest.IsolatedAsyncioTestCase):
 

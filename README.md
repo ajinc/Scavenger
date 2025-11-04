@@ -1,16 +1,17 @@
 # Intraday Price Action Bot for Indian Markets
 
-This is a fully autonomous trading bot designed for intraday price action strategies, with a special focus on the Indian markets (NIFTY & BANKNIFTY). It supports multiple strategies, starting with the classic **Opening Range Breakout (ORB)**, and provides VWAP confirmation for all its alerts.
+This is a fully autonomous trading bot designed for intraday price action strategies, with a special focus on the Indian markets (NIFTY & BANKNIFTY). It supports multiple strategies, provides VWAP confirmation for all its alerts, and now identifies major long-term support and resistance levels.
 
 ## Features
 
+- **Swing Level Analysis:** On startup, the bot automatically identifies and displays the major swing highs and lows from the last six months, giving you immediate insight into the long-term market structure.
 - **Pluggable Strategies:** Choose between different trading strategies. Currently supports:
     - `orb`: Opening Range Breakout (perfect for indices like NIFTY).
     - `levels`: The classic PDH/PDL and PWH/PWL strategy.
 - **VWAP Confirmation:** All alerts are filtered using the VWAP for higher-quality signals.
-- **Multi-Stock Monitoring:** Track multiple stocks or indices in parallel (e.g., NIFTY & BANKNIFTY).
+- **Multi-Stock Monitoring:** Track multiple stocks or indices in parallel.
 - **Fully Autonomous:** Runs continuously and recalculates levels at the start of each trading day.
-- **Configurable for Any Market:** While pre-configured for India, you can adapt it to any market with command-line arguments.
+- **Configurable for Any Market:** While pre-configured for India, you can adapt it to any market.
 - **Real-Time Data:** Uses `yfinance` for live price data.
 - **Telegram Alerts:** Sends instant, detailed notifications to your Telegram.
 - **Tested:** Includes a suite of unit tests.
@@ -43,11 +44,7 @@ This is the recommended strategy for intraday trading on indices like NIFTY (`^N
 ```bash
 python trading_bot.py --strategy orb --tickers ^NSEI ^NSEBANK --orb-minutes 15
 ```
-This command will:
-- Use the **Opening Range Breakout** strategy.
-- Monitor both **NIFTY** and **BANKNIFTY**.
-- Define the opening range as the first **15 minutes** of trading.
-- Use the default Indian market timings.
+On startup, the bot will first send you the major swing levels for NIFTY and BANKNIFTY. It will then begin monitoring for opening range breakouts.
 
 ### **Using the Classic Levels Strategy**
 
