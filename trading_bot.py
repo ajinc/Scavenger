@@ -123,8 +123,8 @@ async def main(args):
 
     # Schedule jobs
     utc_market_open = get_utc_time(args.market_open, args.timezone)
-    aioschedule.every().day.at(utc_market_open).do(update_key_levels, args.ticker, args.suffix)
-    aioschedule.every(1).minutes.do(check_price, args.ticker, args.suffix)
+    aioschedule.every().day.at(utc_market_open).do(lambda: asyncio.create_task(update_key_levels(args.ticker, args.suffix)))
+    aioschedule.every(1).minutes.do(lambda: asyncio.create_task(check_price(args.ticker, args.suffix)))
 
     while True:
         await aioschedule.run_pending()
