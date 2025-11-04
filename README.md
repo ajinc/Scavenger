@@ -1,60 +1,75 @@
-# Fully Autonomous Multi-Stock Trading Bot with VWAP Confirmation
+# Intraday Price Action Bot for Indian Markets
 
-This project is a fully autonomous trading bot that monitors multiple stocks in parallel against key historical levels, now with VWAP (Volume Weighted Average Price) confirmation. The bot tracks the previous day's high (PDH) and low (PDL), and the previous week's high (PWH) and low (PWL). When the price crosses one of these key levels, it now checks if the price is also above/below the VWAP before sending an alert, leading to higher-quality signals.
+This is a fully autonomous trading bot designed for intraday price action strategies, with a special focus on the Indian markets (NIFTY & BANKNIFTY). It supports multiple strategies, starting with the classic **Opening Range Breakout (ORB)**, and provides VWAP confirmation for all its alerts.
 
 ## Features
 
-- **VWAP Confirmation:** Alerts are filtered using the VWAP to provide stronger, more reliable trading signals.
-- **Multi-Stock Monitoring:** Track a whole watchlist of stocks in parallel.
-- **Fully Autonomous:** Runs continuously and automatically recalculates key levels daily.
-- **Multi-Level Strategy:** Uses both daily and weekly historical data (PDH, PDL, PWH, PWL).
-- **Configurable Market Timings:** Adaptable to any stock market with configurable open times and timezones.
-- **Real-Time Price Monitoring:** Utilizes `yfinance` and `pandas-ta` for live price and indicator data.
-- **Telegram Alerts:** Sends instant, detailed notifications when a stock crosses a key level with VWAP confirmation.
-- **Global Stock Support:** Monitor stocks on international exchanges by specifying a market suffix.
-- **Secure Configuration:** Manages API tokens using a `.env` file.
-- **Tested:** Includes a suite of unit tests to verify the core logic.
+- **Pluggable Strategies:** Choose between different trading strategies. Currently supports:
+    - `orb`: Opening Range Breakout (perfect for indices like NIFTY).
+    - `levels`: The classic PDH/PDL and PWH/PWL strategy.
+- **VWAP Confirmation:** All alerts are filtered using the VWAP for higher-quality signals.
+- **Multi-Stock Monitoring:** Track multiple stocks or indices in parallel (e.g., NIFTY & BANKNIFTY).
+- **Fully Autonomous:** Runs continuously and recalculates levels at the start of each trading day.
+- **Configurable for Any Market:** While pre-configured for India, you can adapt it to any market with command-line arguments.
+- **Real-Time Data:** Uses `yfinance` for live price data.
+- **Telegram Alerts:** Sends instant, detailed notifications to your Telegram.
+- **Tested:** Includes a suite of unit tests.
 
 ## Prerequisites
 
-- Python 3.6 or higher
-- A Telegram account & credentials (Bot Token, Chat ID).
+- Python 3.6+
+- A Telegram account & credentials.
 
-## Setup
+## Setup & Configuration
 
-1.  **Clone the repository:** `git clone <repository-url>`
-2.  **Install dependencies:** `pip install -r requirements.txt`
-
-## Configuration
-
-1.  **Create a `.env` file:** `cp .env.example .env`
-2.  **Add your credentials to `.env`:**
+1.  **Clone & Install:**
+    ```bash
+    git clone <repository-url>
+    pip install -r requirements.txt
     ```
-    TELEGRAM_BOT_TOKEN="your-bot-token"
-    TELEGRAM_CHAT_ID="your-chat-id"
-    ```
+2.  **Configure Credentials:**
+    - Copy the example `.env` file: `cp .env.example .env`
+    - Add your Telegram Bot Token and Chat ID to the `.env` file.
 
 ## Usage
 
-To start the trading bot, run the following command. The bot will run continuously, so you can leave it running in a terminal or on a server.
+The bot is designed to be run from the command line and left running.
 
-**For the Indian Market (Default):**
+### **For Indian Markets: ORB Strategy (Recommended)**
+
+This is the recommended strategy for intraday trading on indices like NIFTY (`^NSEI`) and BANKNIFTY (`^NSEBANK`).
+
+**To monitor NIFTY and BANKNIFTY with a 15-minute opening range:**
 ```bash
-# Monitor TATACAP and RELIANCE on the NSE
-python trading_bot.py --tickers TATACAP RELIANCE --suffix .NS
+python trading_bot.py --strategy orb --tickers ^NSEI ^NSEBANK --orb-minutes 15
+```
+This command will:
+- Use the **Opening Range Breakout** strategy.
+- Monitor both **NIFTY** and **BANKNIFTY**.
+- Define the opening range as the first **15 minutes** of trading.
+- Use the default Indian market timings.
+
+### **Using the Classic Levels Strategy**
+
+You can still use the original PDH/PDL and PWH/PWL strategy if you prefer.
+
+**To monitor a stock on the NSE with the levels strategy:**
+```bash
+python trading_bot.py --strategy levels --tickers TATACAP --suffix .NS
 ```
 
-**For Other Markets (e.g., US Market):**
+### **Configuration for Other Markets**
+
+You can adapt the bot for any market by specifying the market open time and timezone.
+
+**Example for the US Market (ORB Strategy):**
 ```bash
-# Monitor TSLA, AAPL, and GOOGL on the NASDAQ
-python trading_bot.py --tickers TSLA AAPL GOOGL --market-open 09:30 --timezone America/New_York
+python trading_bot.py --strategy orb --tickers TSLA AAPL --market-open 09:30 --timezone America/New_York --orb-minutes 30
 ```
-You can find timezones [here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) and international stock tickers and suffixes on [Yahoo Finance](https://finance.yahoo.com/).
 
 ## Testing
 
-To run the unit tests, use the following command:
+Run the unit tests with:
 ```bash
 python -m unittest test_trading_bot.py
 ```
-This will execute the test suite and verify that the core components of the bot are functioning correctly.
