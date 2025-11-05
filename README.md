@@ -1,18 +1,17 @@
-# Intraday Price Action Bot for Indian Markets
+# Universal Intraday Trading Bot
 
-This is a fully autonomous trading bot designed for intraday price action strategies, with a special focus on the Indian markets (NIFTY & BANKNIFTY). It supports multiple strategies, provides VWAP confirmation for all its alerts, and now identifies major long-term support and resistance levels.
+This is a fully autonomous trading bot designed for intraday trading. Its default strategy is a **universal** system that monitors a comprehensive set of key price levels, making it a powerful tool for identifying potential breakouts.
 
-## Features
+## Key Features
 
-- **Swing Level Analysis:** On startup, the bot automatically identifies and displays the major swing highs and lows from the last six months, giving you immediate insight into the long-term market structure.
-- **Pluggable Strategies:** Choose between different trading strategies. Currently supports:
-    - `orb`: Opening Range Breakout (perfect for indices like NIFTY).
-    - `levels`: The classic PDH/PDL and PWH/PWL strategy.
-- **VWAP Confirmation:** All alerts are filtered using the VWAP for higher-quality signals.
-- **Multi-Stock Monitoring:** Track multiple stocks or indices in parallel.
-- **Fully Autonomous:** Runs continuously and recalculates levels at the start of each trading day.
-- **Configurable for Any Market:** While pre-configured for India, you can adapt it to any market.
-- **Real-Time Data:** Uses `yfinance` for live price data.
+- **Universal Strategy (Default):** The bot's primary strategy monitors all of the following levels in parallel:
+    - **Previous Day's High & Low (PDH/PDL)**
+    - **Previous Week's High & Low (PWH/PWL)**
+    - **Major Swing Highs & Lows** (from the last 6 months)
+- **VWAP Confirmation:** All alerts are filtered using the Volume Weighted Average Price (VWAP) to provide higher-quality, volume-confirmed signals.
+- **Multi-Stock Monitoring:** Track an entire watchlist of stocks or indices in parallel.
+- **Fully Autonomous:** The bot runs continuously and is designed to be a "set it and forget it" tool.
+- **Configurable for Any Market:** While pre-configured for the Indian markets, it can be adapted to any global market.
 - **Telegram Alerts:** Sends instant, detailed notifications to your Telegram.
 - **Tested:** Includes a suite of unit tests.
 
@@ -36,32 +35,25 @@ This is a fully autonomous trading bot designed for intraday price action strate
 
 The bot is designed to be run from the command line and left running.
 
-### **For Indian Markets: ORB Strategy (Recommended)**
+### **Universal Strategy (Default)**
 
-This is the recommended strategy for intraday trading on indices like NIFTY (`^NSEI`) and BANKNIFTY (`^NSEBANK`).
+This is the recommended strategy for most use cases. It provides a comprehensive view of the market's key levels.
 
-**To monitor NIFTY and BANKNIFTY with a 15-minute opening range:**
+**To monitor NIFTY and BANKNIFTY:**
 ```bash
-python trading_bot.py --strategy orb --tickers ^NSEI ^NSEBANK --orb-minutes 15
+# NIFTY: ^NSEI, BANKNIFTY: ^NSEBANK
+python trading_bot.py --tickers ^NSEI ^NSEBANK
 ```
-On startup, the bot will first send you the major swing levels for NIFTY and BANKNIFTY. It will then begin monitoring for opening range breakouts.
-
-### **Using the Classic Levels Strategy**
-
-You can still use the original PDH/PDL and PWH/PWL strategy if you prefer.
-
-**To monitor a stock on the NSE with the levels strategy:**
-```bash
-python trading_bot.py --strategy levels --tickers TATACAP --suffix .NS
-```
+On startup, the bot will immediately send you a summary of all the key levels it is monitoring for each index.
 
 ### **Configuration for Other Markets**
 
-You can adapt the bot for any market by specifying the market open time and timezone.
+You can easily adapt the bot for any market.
 
-**Example for the US Market (ORB Strategy):**
+**Example for the US Market:**
 ```bash
-python trading_bot.py --strategy orb --tickers TSLA AAPL --market-open 09:30 --timezone America/New_York --orb-minutes 30
+# Monitor TSLA and AAPL on the NASDAQ
+python trading_bot.py --tickers TSLA AAPL
 ```
 
 ## Testing
