@@ -54,20 +54,13 @@ class Strategy:
 
 class UniversalStrategy(Strategy):
     async def update_levels(self):
-        """Gathers all key levels for the ticker."""
         levels = {}
-
-        # PDH/PDL
         hist_2d = yf.Ticker(self.ts.full_ticker).history(period="2d")
         if len(hist_2d) > 1:
             levels['pdh'], levels['pdl'] = hist_2d.iloc[-2][['High', 'Low']]
-
-        # PWH/PWL
         hist_1w = yf.Ticker(self.ts.full_ticker).history(period="1w")
         if not hist_1w.empty:
             levels['pwh'], levels['pwl'] = hist_1w.iloc[0][['High', 'Low']]
-
-        # Swing Levels
         swing_highs, swing_lows = self._get_swing_levels()
         for i, v in enumerate(swing_highs): levels[f'swing_high_{i}'] = v
         for i, v in enumerate(swing_lows): levels[f'swing_low_{i}'] = v
@@ -78,7 +71,6 @@ class UniversalStrategy(Strategy):
 
         self.ts.levels = levels
         self.ts.alert_flags = {f"alerted_{k}": False for k in self.ts.levels}
-
         level_str = "\n".join([f"{k.upper()}: {round(v, 2)}" for k, v in self.ts.levels.items()])
         await send_telegram_alert(f"Key levels for {self.ts.full_ticker}:\n{level_str}")
         return True
@@ -115,6 +107,62 @@ class UniversalStrategy(Strategy):
         low_peaks, _ = find_peaks(-hist['Low'], prominence=required_prominence)
         return hist.iloc[high_peaks]['High'].nlargest(3).tolist(), hist.iloc[low_peaks]['Low'].nsmallest(3).tolist()
 
+class OrbStrategy(Strategy):
+    async def update_levels(self):
+        tz = pytz.timezone(self.args.timezone)
+        market_open = datetime.strptime(self.args.market_open, '%H:%M').time()
+        now = datetime.now(tz).time()
+        orb_end_time = (datetime.combine(date.today(), market_open) + timedelta(minutes=self.args.orb_minutes)).time()
+
+        if now < orb_end_time:
+            wait_seconds = (datetime.combine(date.today(), orb_end_time) - datetime.combine(date.today(), now)).total_seconds()
+            await asyncio.sleep(wait_seconds)
+
+        intraday_data = yf.Ticker(self.ts.full_ticker).history(period="1d", interval="1m")
+        if intraday_data.empty:
+            await send_telegram_alert(f"Could not fetch intraday data for {self.ts.full_ticker}.")
+            return False
+
+        opening_range_data = intraday_data.between_time(market_open, orb_end_time)
+        if opening_range_data.empty:
+            await send_telegram_alert(f"No data for opening range for {self.ts.full_ticker}.")
+            return False
+
+        orb_high = opening_range_data['High'].max()
+        orb_low = opening_range_data['Low'].min()
+
+        self.ts.levels = {'orb_high': orb_high, 'orb_low': orb_low}
+        self.ts.alert_flags = {f"alerted_{k}": False for k in self.ts.levels}
+
+        await send_telegram_alert(
+            f"Opening range for {self.ts.full_ticker} ({self.args.orb_minutes} mins):\n"
+            f"High: {round(orb_high, 2)}, Low: {round(orb_low, 2)}"
+        )
+        return True
+
+    async def check_price(self):
+        price = get_current_price(self.ts.full_ticker)
+        vwap = get_vwap(self.ts.full_ticker)
+        if price is None or vwap is None: return
+
+        orb_high = self.ts.levels.get('orb_high')
+        orb_low = self.ts.levels.get('orb_low')
+        if not all([orb_high, orb_low]): return
+
+        if price > orb_high and not self.ts.alert_flags['alerted_orb_high'] and price > vwap:
+            await send_telegram_alert(
+                f"Alert: {self.ts.full_ticker} broke above opening range with VWAP confirmation!\n"
+                f"Price: {round(price, 2)}, VWAP: {round(vwap, 2)}"
+            )
+            self.ts.alert_flags['alerted_orb_high'] = True
+
+        elif price < orb_low and not self.ts.alert_flags['alerted_orb_low'] and price < vwap:
+            await send_telegram_alert(
+                f"Alert: {self.ts.full_ticker} broke below opening range with VWAP confirmation!\n"
+                f"Price: {round(price, 2)}, VWAP: {round(vwap, 2)}"
+            )
+            self.ts.alert_flags['alerted_orb_low'] = True
+
 # --- Ticker State ---
 class TickerState:
     def __init__(self, ticker, suffix, strategy_class, args):
@@ -130,7 +178,7 @@ async def price_checker(states):
         await asyncio.sleep(60)
 
 async def main(args):
-    strategy_map = {"universal": UniversalStrategy}
+    strategy_map = {"universal": UniversalStrategy, "orb": OrbStrategy}
     strategy_class = strategy_map.get(args.strategy)
     if not strategy_class:
         print(f"Unknown strategy: {args.strategy}")
@@ -148,9 +196,12 @@ if __name__ == '__main__':
         print("ERROR: Missing Telegram credentials in .env file.")
     else:
         parser = argparse.ArgumentParser(description="A multi-strategy, multi-stock trading bot.")
-        parser.add_argument('--strategy', default='universal', choices=['universal'], help='The trading strategy to use.')
+        parser.add_argument('--strategy', default='universal', choices=['universal', 'orb'], help='The trading strategy to use.')
         parser.add_argument('--tickers', nargs='+', default=['AAPL'], help='List of stock tickers.')
         parser.add_argument('--suffix', default='', help='Exchange suffix for tickers.')
+        parser.add_argument('--market-open', default='09:15', help='Market open time (HH:MM).')
+        parser.add_argument('--timezone', default='Asia/Kolkata', help='Timezone for the market.')
+        parser.add_argument('--orb-minutes', type=int, default=15, help='Opening range breakout in minutes.')
         args = parser.parse_args()
 
         try:

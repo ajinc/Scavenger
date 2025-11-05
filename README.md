@@ -1,17 +1,16 @@
-# Universal Intraday Trading Bot
+# Universal Intraday Trading Bot with ORB Strategy
 
-This is a fully autonomous trading bot designed for intraday trading. Its default strategy is a **universal** system that monitors a comprehensive set of key price levels, making it a powerful tool for identifying potential breakouts.
+This is a fully autonomous trading bot designed for intraday trading. It features two powerful, selectable strategies: a **universal** system for comprehensive level monitoring, and a specialized **Opening Range Breakout (ORB)** strategy for intraday price action.
 
 ## Key Features
 
-- **Universal Strategy (Default):** The bot's primary strategy monitors all of the following levels in parallel:
-    - **Previous Day's High & Low (PDH/PDL)**
-    - **Previous Week's High & Low (PWH/PWL)**
-    - **Major Swing Highs & Lows** (from the last 6 months)
-- **VWAP Confirmation:** All alerts are filtered using the Volume Weighted Average Price (VWAP) to provide higher-quality, volume-confirmed signals.
+- **Pluggable Strategies:** Choose the best strategy for your needs:
+    - `universal` (Default): Monitors all key levels in parallel (PDH/PDL, PWH/PWL, and major swing points).
+    - `orb`: A specialized strategy for trading opening range breakouts.
+- **VWAP Confirmation:** All alerts are filtered using the VWAP for higher-quality signals.
 - **Multi-Stock Monitoring:** Track an entire watchlist of stocks or indices in parallel.
-- **Fully Autonomous:** The bot runs continuously and is designed to be a "set it and forget it" tool.
-- **Configurable for Any Market:** While pre-configured for the Indian markets, it can be adapted to any global market.
+- **Fully Autonomous:** Runs continuously.
+- **Configurable for Any Market:** Adaptable to any global market.
 - **Telegram Alerts:** Sends instant, detailed notifications to your Telegram.
 - **Tested:** Includes a suite of unit tests.
 
@@ -22,14 +21,8 @@ This is a fully autonomous trading bot designed for intraday trading. Its defaul
 
 ## Setup & Configuration
 
-1.  **Clone & Install:**
-    ```bash
-    git clone <repository-url>
-    pip install -r requirements.txt
-    ```
-2.  **Configure Credentials:**
-    - Copy the example `.env` file: `cp .env.example .env`
-    - Add your Telegram Bot Token and Chat ID to the `.env` file.
+1.  **Clone & Install:** `git clone <repository-url>` and `pip install -r requirements.txt`
+2.  **Configure Credentials:** Copy `.env.example` to `.env` and add your Telegram Bot Token and Chat ID.
 
 ## Usage
 
@@ -37,23 +30,31 @@ The bot is designed to be run from the command line and left running.
 
 ### **Universal Strategy (Default)**
 
-This is the recommended strategy for most use cases. It provides a comprehensive view of the market's key levels.
+This is the recommended strategy for a comprehensive market overview.
 
 **To monitor NIFTY and BANKNIFTY:**
 ```bash
 # NIFTY: ^NSEI, BANKNIFTY: ^NSEBANK
 python trading_bot.py --tickers ^NSEI ^NSEBANK
 ```
-On startup, the bot will immediately send you a summary of all the key levels it is monitoring for each index.
+The bot will immediately send a summary of all the key levels it's monitoring.
+
+### **ORB Strategy for Intraday Trading**
+
+This is a specialized strategy for trading breakouts of the opening range.
+
+**To monitor NIFTY and BANKNIFTY with a 15-minute opening range:**
+```bash
+python trading_bot.py --strategy orb --tickers ^NSEI ^NSEBANK --orb-minutes 15
+```
 
 ### **Configuration for Other Markets**
 
-You can easily adapt the bot for any market.
+Both strategies can be adapted for any market.
 
-**Example for the US Market:**
+**Example for the US Market (ORB):**
 ```bash
-# Monitor TSLA and AAPL on the NASDAQ
-python trading_bot.py --tickers TSLA AAPL
+python trading_bot.py --strategy orb --tickers TSLA AAPL --market-open 09:30 --timezone America/New_York
 ```
 
 ## Testing
