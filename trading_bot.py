@@ -44,17 +44,6 @@ def get_vwap(ticker):
     intraday_data['VWAP'] = (intraday_data['Close'] * intraday_data['Volume']).cumsum() / intraday_data['Volume'].cumsum()
     return intraday_data.iloc[-1]['VWAP']
 
-def get_swing_levels(ticker, months=6, prominence=0.1):
-    end_date = date.today()
-    start_date = end_date - timedelta(days=months * 30)
-    hist = yf.Ticker(ticker).history(start=start_date, end=end_date)
-    if hist.empty: return [], []
-    price_range = hist['High'].max() - hist['Low'].min()
-    required_prominence = price_range * prominence
-    high_peaks, _ = find_peaks(hist['High'], prominence=required_prominence)
-    low_peaks, _ = find_peaks(-hist['Low'], prominence=required_prominence)
-    return hist.iloc[high_peaks]['High'].nlargest(3).tolist(), hist.iloc[low_peaks]['Low'].nsmallest(3).tolist()
-
 # --- Strategy Classes ---
 class Strategy:
     def __init__(self, ts, args):
@@ -65,7 +54,33 @@ class Strategy:
 
 class UniversalStrategy(Strategy):
     async def update_levels(self):
-        # This strategy's levels are long-term and only updated once at startup
+        """Gathers all key levels for the ticker."""
+        levels = {}
+
+        # PDH/PDL
+        hist_2d = yf.Ticker(self.ts.full_ticker).history(period="2d")
+        if len(hist_2d) > 1:
+            levels['pdh'], levels['pdl'] = hist_2d.iloc[-2][['High', 'Low']]
+
+        # PWH/PWL
+        hist_1w = yf.Ticker(self.ts.full_ticker).history(period="1w")
+        if not hist_1w.empty:
+            levels['pwh'], levels['pwl'] = hist_1w.iloc[0][['High', 'Low']]
+
+        # Swing Levels
+        swing_highs, swing_lows = self._get_swing_levels()
+        for i, v in enumerate(swing_highs): levels[f'swing_high_{i}'] = v
+        for i, v in enumerate(swing_lows): levels[f'swing_low_{i}'] = v
+
+        if not levels:
+            await send_telegram_alert(f"Could not retrieve any key levels for {self.ts.full_ticker}.")
+            return False
+
+        self.ts.levels = levels
+        self.ts.alert_flags = {f"alerted_{k}": False for k in self.ts.levels}
+
+        level_str = "\n".join([f"{k.upper()}: {round(v, 2)}" for k, v in self.ts.levels.items()])
+        await send_telegram_alert(f"Key levels for {self.ts.full_ticker}:\n{level_str}")
         return True
 
     async def check_price(self):
@@ -88,6 +103,17 @@ class UniversalStrategy(Strategy):
 
             elif 'high' in name and price < val: self.ts.alert_flags[flag] = False
             elif 'low' in name and price > val: self.ts.alert_flags[flag] = False
+
+    def _get_swing_levels(self, months=6, prominence=0.1):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=months * 30)
+        hist = yf.Ticker(self.ts.full_ticker).history(start=start_date, end=end_date)
+        if hist.empty: return [], []
+        price_range = hist['High'].max() - hist['Low'].min()
+        required_prominence = price_range * prominence
+        high_peaks, _ = find_peaks(hist['High'], prominence=required_prominence)
+        low_peaks, _ = find_peaks(-hist['Low'], prominence=required_prominence)
+        return hist.iloc[high_peaks]['High'].nlargest(3).tolist(), hist.iloc[low_peaks]['Low'].nsmallest(3).tolist()
 
 # --- Ticker State ---
 class TickerState:
@@ -112,27 +138,8 @@ async def main(args):
 
     await send_telegram_alert(f"Bot starting with '{args.strategy}' strategy for: {', '.join(args.tickers)}.")
 
-    states = []
-    for t in args.tickers:
-        state = TickerState(t, args.suffix, strategy_class, args)
-
-        # Gather all levels for the universal strategy
-        pdh, pdl = yf.Ticker(state.full_ticker).history(period="2d").iloc[-2][['High', 'Low']]
-        pwh, pwl = yf.Ticker(state.full_ticker).history(period="1w").iloc[0][['High', 'Low']]
-        swing_highs, swing_lows = get_swing_levels(state.full_ticker)
-
-        state.levels = {
-            'pdh': pdh, 'pdl': pdl, 'pwh': pwh, 'pwl': pwl,
-            **{f'swing_high_{i}': v for i, v in enumerate(swing_highs)},
-            **{f'swing_low_{i}': v for i, v in enumerate(swing_lows)}
-        }
-        state.alert_flags = {f"alerted_{k}": False for k in state.levels}
-
-        # Format and send startup message
-        level_str = "\n".join([f"{k.upper()}: {round(v, 2)}" for k, v in state.levels.items()])
-        await send_telegram_alert(f"Key levels for {state.full_ticker}:\n{level_str}")
-
-        states.append(state)
+    states = [TickerState(t, args.suffix, strategy_class, args) for t in args.tickers]
+    await asyncio.gather(*(s.strategy.update_levels() for s in states))
 
     await price_checker(states)
 
