@@ -58,9 +58,12 @@ class UniversalStrategy(Strategy):
         hist_2d = yf.Ticker(self.ts.full_ticker).history(period="2d")
         if len(hist_2d) > 1:
             levels['pdh'], levels['pdl'] = hist_2d.iloc[-2][['High', 'Low']]
-        hist_1w = yf.Ticker(self.ts.full_ticker).history(period="1w")
-        if not hist_1w.empty:
-            levels['pwh'], levels['pwl'] = hist_1w.iloc[0][['High', 'Low']]
+
+        hist_5d = yf.Ticker(self.ts.full_ticker).history(period="5d")
+        if not hist_5d.empty:
+            levels['pwh'] = hist_5d['High'].max()
+            levels['pwl'] = hist_5d['Low'].min()
+
         swing_highs, swing_lows = self._get_swing_levels()
         for i, v in enumerate(swing_highs): levels[f'swing_high_{i}'] = v
         for i, v in enumerate(swing_lows): levels[f'swing_low_{i}'] = v
