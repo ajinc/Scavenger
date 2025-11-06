@@ -55,12 +55,12 @@ class Strategy:
 class UniversalStrategy(Strategy):
     async def update_levels(self):
         levels = {}
-        hist_2d = yf.Ticker(self.ts.full_ticker).history(period="2d")
-        if len(hist_2d) > 1:
-            levels['pdh'] = hist_2d.iloc[-2]['High']
-            levels['pdl'] = hist_2d.iloc[-2]['Low']
-
         hist_5d = yf.Ticker(self.ts.full_ticker).history(period="5d")
+
+        if len(hist_5d) > 1:
+            levels['pdh'] = hist_5d.iloc[-2]['High']
+            levels['pdl'] = hist_5d.iloc[-2]['Low']
+
         if not hist_5d.empty:
             levels['pwh'] = hist_5d['High'].max()
             levels['pwl'] = hist_5d['Low'].min()
