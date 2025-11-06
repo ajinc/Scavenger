@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 from datetime import date, timedelta, datetime
 
 # Load environment variables
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path)
 
 # --- Configuration ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -176,6 +177,15 @@ class TickerState:
         self.strategy = strategy_class(self, args)
 
 # --- Main Execution ---
+async def daily_updater(states, market_open_time, tz):
+    while True:
+        now = datetime.now(tz)
+        market_open = now.replace(hour=market_open_time.hour, minute=market_open_time.minute, second=0)
+        wait = (market_open - now).total_seconds()
+        if wait < 0: wait += 86400
+        await asyncio.sleep(wait)
+        await asyncio.gather(*(s.strategy.update_levels() for s in states))
+
 async def price_checker(states):
     while True:
         await asyncio.gather(*(s.strategy.check_price() for s in states))
@@ -193,7 +203,13 @@ async def main(args):
     states = [TickerState(t, args.suffix, strategy_class, args) for t in args.tickers]
     await asyncio.gather(*(s.strategy.update_levels() for s in states))
 
-    await price_checker(states)
+    market_tz = pytz.timezone(args.timezone)
+    market_open_time = datetime.strptime(args.market_open, '%H:%M').time()
+
+    updater_task = asyncio.create_task(daily_updater(states, market_open_time, market_tz))
+    checker_task = asyncio.create_task(price_checker(states))
+
+    await asyncio.gather(updater_task, checker_task)
 
 if __name__ == '__main__':
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
