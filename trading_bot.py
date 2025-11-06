@@ -57,7 +57,8 @@ class UniversalStrategy(Strategy):
         levels = {}
         hist_2d = yf.Ticker(self.ts.full_ticker).history(period="2d")
         if len(hist_2d) > 1:
-            levels['pdh'], levels['pdl'] = hist_2d.iloc[-2][['High', 'Low']]
+            levels['pdh'] = hist_2d.iloc[-2]['High']
+            levels['pdl'] = hist_2d.iloc[-2]['Low']
 
         hist_5d = yf.Ticker(self.ts.full_ticker).history(period="5d")
         if not hist_5d.empty:
