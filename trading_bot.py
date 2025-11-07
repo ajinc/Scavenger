@@ -87,8 +87,11 @@ class UniversalStrategy(Strategy):
 
         for name, val in self.ts.levels.items():
             flag = f"alerted_{name}"
-            above = 'high' in name and price > val and not self.ts.alert_flags[flag] and price > vwap
-            below = 'low' in name and price < val and not self.ts.alert_flags[flag] and price < vwap
+            is_high_level = 'high' in name or name.endswith('h')
+            is_low_level = 'low' in name or name.endswith('l')
+
+            above = is_high_level and price > val and not self.ts.alert_flags.get(flag, False) and price > vwap
+            below = is_low_level and price < val and not self.ts.alert_flags.get(flag, False) and price < vwap
 
             if above or below:
                 direction = "above" if above else "below"
@@ -98,8 +101,8 @@ class UniversalStrategy(Strategy):
                 )
                 self.ts.alert_flags[flag] = True
 
-            elif 'high' in name and price < val: self.ts.alert_flags[flag] = False
-            elif 'low' in name and price > val: self.ts.alert_flags[flag] = False
+            elif is_high_level and price < val: self.ts.alert_flags[flag] = False
+            elif is_low_level and price > val: self.ts.alert_flags[flag] = False
 
     def _get_swing_levels(self, months=6, prominence=0.1):
         end_date = date.today()
@@ -112,62 +115,6 @@ class UniversalStrategy(Strategy):
         low_peaks, _ = find_peaks(-hist['Low'], prominence=required_prominence)
         return hist.iloc[high_peaks]['High'].nlargest(3).tolist(), hist.iloc[low_peaks]['Low'].nsmallest(3).tolist()
 
-class OrbStrategy(Strategy):
-    async def update_levels(self):
-        tz = pytz.timezone(self.args.timezone)
-        market_open = datetime.strptime(self.args.market_open, '%H:%M').time()
-        now = datetime.now(tz).time()
-        orb_end_time = (datetime.combine(date.today(), market_open) + timedelta(minutes=self.args.orb_minutes)).time()
-
-        if now < orb_end_time:
-            wait_seconds = (datetime.combine(date.today(), orb_end_time) - datetime.combine(date.today(), now)).total_seconds()
-            await asyncio.sleep(wait_seconds)
-
-        intraday_data = yf.Ticker(self.ts.full_ticker).history(period="1d", interval="1m")
-        if intraday_data.empty:
-            await send_telegram_alert(f"Could not fetch intraday data for {self.ts.full_ticker}.")
-            return False
-
-        opening_range_data = intraday_data.between_time(market_open, orb_end_time)
-        if opening_range_data.empty:
-            await send_telegram_alert(f"No data for opening range for {self.ts.full_ticker}.")
-            return False
-
-        orb_high = opening_range_data['High'].max()
-        orb_low = opening_range_data['Low'].min()
-
-        self.ts.levels = {'orb_high': orb_high, 'orb_low': orb_low}
-        self.ts.alert_flags = {f"alerted_{k}": False for k in self.ts.levels}
-
-        await send_telegram_alert(
-            f"Opening range for {self.ts.full_ticker} ({self.args.orb_minutes} mins):\n"
-            f"High: {round(orb_high, 2)}, Low: {round(orb_low, 2)}"
-        )
-        return True
-
-    async def check_price(self):
-        price = get_current_price(self.ts.full_ticker)
-        vwap = get_vwap(self.ts.full_ticker)
-        if price is None or vwap is None: return
-
-        orb_high = self.ts.levels.get('orb_high')
-        orb_low = self.ts.levels.get('orb_low')
-        if not all([orb_high, orb_low]): return
-
-        if price > orb_high and not self.ts.alert_flags['alerted_orb_high'] and price > vwap:
-            await send_telegram_alert(
-                f"Alert: {self.ts.full_ticker} broke above opening range with VWAP confirmation!\n"
-                f"Price: {round(price, 2)}, VWAP: {round(vwap, 2)}"
-            )
-            self.ts.alert_flags['alerted_orb_high'] = True
-
-        elif price < orb_low and not self.ts.alert_flags['alerted_orb_low'] and price < vwap:
-            await send_telegram_alert(
-                f"Alert: {self.ts.full_ticker} broke below opening range with VWAP confirmation!\n"
-                f"Price: {round(price, 2)}, VWAP: {round(vwap, 2)}"
-            )
-            self.ts.alert_flags['alerted_orb_low'] = True
-
 # --- Ticker State ---
 class TickerState:
     def __init__(self, ticker, suffix, strategy_class, args):
@@ -177,22 +124,13 @@ class TickerState:
         self.strategy = strategy_class(self, args)
 
 # --- Main Execution ---
-async def daily_updater(states, market_open_time, tz):
-    while True:
-        now = datetime.now(tz)
-        market_open = now.replace(hour=market_open_time.hour, minute=market_open_time.minute, second=0)
-        wait = (market_open - now).total_seconds()
-        if wait < 0: wait += 86400
-        await asyncio.sleep(wait)
-        await asyncio.gather(*(s.strategy.update_levels() for s in states))
-
-async def price_checker(states):
+async def price_checker_task(states):
     while True:
         await asyncio.gather(*(s.strategy.check_price() for s in states))
         await asyncio.sleep(60)
 
 async def main(args):
-    strategy_map = {"universal": UniversalStrategy, "orb": OrbStrategy}
+    strategy_map = {"universal": UniversalStrategy}
     strategy_class = strategy_map.get(args.strategy)
     if not strategy_class:
         print(f"Unknown strategy: {args.strategy}")
@@ -203,25 +141,17 @@ async def main(args):
     states = [TickerState(t, args.suffix, strategy_class, args) for t in args.tickers]
     await asyncio.gather(*(s.strategy.update_levels() for s in states))
 
-    market_tz = pytz.timezone(args.timezone)
-    market_open_time = datetime.strptime(args.market_open, '%H:%M').time()
-
-    updater_task = asyncio.create_task(daily_updater(states, market_open_time, market_tz))
-    checker_task = asyncio.create_task(price_checker(states))
-
-    await asyncio.gather(updater_task, checker_task)
+    # Start the price checker task
+    await price_checker_task(states)
 
 if __name__ == '__main__':
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("ERROR: Missing Telegram credentials in .env file.")
     else:
         parser = argparse.ArgumentParser(description="A multi-strategy, multi-stock trading bot.")
-        parser.add_argument('--strategy', default='universal', choices=['universal', 'orb'], help='The trading strategy to use.')
+        parser.add_argument('--strategy', default='universal', choices=['universal'], help='The trading strategy to use.')
         parser.add_argument('--tickers', nargs='+', default=['AAPL'], help='List of stock tickers.')
         parser.add_argument('--suffix', default='', help='Exchange suffix for tickers.')
-        parser.add_argument('--market-open', default='09:15', help='Market open time (HH:MM).')
-        parser.add_argument('--timezone', default='Asia/Kolkata', help='Timezone for the market.')
-        parser.add_argument('--orb-minutes', type=int, default=15, help='Opening range breakout in minutes.')
         args = parser.parse_args()
 
         try:
