@@ -42,6 +42,8 @@ def get_vwap(ticker):
     stock = yf.Ticker(ticker)
     intraday_data = stock.history(period="1d", interval="1m")
     if intraday_data.empty: return None
+    if 'Volume' not in intraday_data.columns or intraday_data['Volume'].sum() == 0:
+        return None
     intraday_data['VWAP'] = (intraday_data['Close'] * intraday_data['Volume']).cumsum() / intraday_data['Volume'].cumsum()
     return intraday_data.iloc[-1]['VWAP']
 
@@ -83,26 +85,40 @@ class UniversalStrategy(Strategy):
     async def check_price(self):
         price = get_current_price(self.ts.full_ticker)
         vwap = get_vwap(self.ts.full_ticker)
-        if price is None or vwap is None: return
+        if price is None:
+            return
 
         for name, val in self.ts.levels.items():
             flag = f"alerted_{name}"
             is_high_level = 'high' in name or name.endswith('h')
             is_low_level = 'low' in name or name.endswith('l')
 
-            above = is_high_level and price > val and not self.ts.alert_flags.get(flag, False) and price > vwap
-            below = is_low_level and price < val and not self.ts.alert_flags.get(flag, False) and price < vwap
+            alert = False
+            if vwap is not None:
+                # Logic with VWAP confirmation
+                if is_high_level and price > val and price > vwap and not self.ts.alert_flags.get(flag, False):
+                    alert = True
+                elif is_low_level and price < val and price < vwap and not self.ts.alert_flags.get(flag, False):
+                    alert = True
+            else:
+                # Logic without VWAP (for indices)
+                if is_high_level and price > val and not self.ts.alert_flags.get(flag, False):
+                    alert = True
+                elif is_low_level and price < val and not self.ts.alert_flags.get(flag, False):
+                    alert = True
 
-            if above or below:
-                direction = "above" if above else "below"
+            if alert:
+                direction = "above" if is_high_level else "below"
+                vwap_str = f", VWAP: {round(vwap, 2)}" if vwap is not None else ""
                 await send_telegram_alert(
                     f"Alert: {self.ts.full_ticker} crossed {direction} {name.upper()}!\n"
-                    f"Price: {round(price, 2)}, VWAP: {round(vwap, 2)}"
+                    f"Price: {round(price, 2)}{vwap_str}"
                 )
                 self.ts.alert_flags[flag] = True
-
-            elif is_high_level and price < val: self.ts.alert_flags[flag] = False
-            elif is_low_level and price > val: self.ts.alert_flags[flag] = False
+            elif is_high_level and price < val:
+                self.ts.alert_flags[flag] = False
+            elif is_low_level and price > val:
+                self.ts.alert_flags[flag] = False
 
     def _get_swing_levels(self, months=6, prominence=0.1):
         end_date = date.today()
