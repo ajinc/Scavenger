@@ -5,7 +5,7 @@ from trading_bot import TickerState, UniversalStrategy
 
 class TestUniversalStrategy(unittest.IsolatedAsyncioTestCase):
 
-    def create_args(self, tickers=['TEST.NS'], suffix=''):
+    def create_args(self, tickers=['RELIANCE.NS'], suffix=''):
         """Helper to create a mock args object."""
         args = MagicMock()
         args.tickers = tickers
@@ -25,7 +25,7 @@ class TestUniversalStrategy(unittest.IsolatedAsyncioTestCase):
     async def test_breakout_alert_logic_with_vwap(self, mock_send_alert, mock_get_intraday_df, mock_get_historical):
         """Test breakout alert with VWAP confirmation."""
         args = self.create_args()
-        state = TickerState('TEST.NS', '', UniversalStrategy, args)
+        state = TickerState('RELIANCE.NS', '', UniversalStrategy, args)
 
         state.levels = {'pdh': 150.0}
         state.alert_flags = {'alerted_pdh': False}

@@ -27,19 +27,26 @@ class DhanClient:
             print("Download complete.")
 
     def _load_security_id_map(self):
-        df = pd.read_csv(self.securities_csv_path)
-        # Create a mapping from a user-friendly ticker to the required API parameters
-        # Example: "RELIANCE-EQ" -> ("NSE_EQ", "EQUITY", "1333")
+        df = pd.read_csv(self.securities_csv_path, low_memory=False)
         id_map = {}
+
+        # A more scalable way to map common index tickers to their official names
+        index_alias_map = {
+            "^NSEI": "NIFTY 50",
+            "^NSEBANK": "NIFTY BANK"
+        }
+
         for _, row in df.iterrows():
-            if row['SEM_INSTRUMENT_NAME'] == 'EQUITY' and row['SEM_EXM_EXCH_ID'] == 'NSE':
-                id_map[f"{row['SEM_TRADING_SYMBOL']}-EQ"] = (
+            if row['SEM_INSTRUMENT_NAME'] == 'EQUITY' and row['SEM_EXM_EXCH_ID'] == 'NSE' and row['SEM_SERIES'] == 'EQ':
+                id_map[f"{row['SM_SYMBOL_NAME']}.NS"] = (
                     "NSE_EQ", "EQUITY", str(row['SEM_SMST_SECURITY_ID'])
                 )
-            elif row['SEM_INSTRUMENT_NAME'] == 'INDEX' and row['SEM_EXM_EXCH_ID'] == 'NSE':
-                id_map[row['SEM_TRADING_SYMBOL']] = (
-                    "NSE_INDEX", "INDEX", str(row['SEM_SMST_SECURITY_ID'])
-                )
+            elif row['SEM_INSTRUMENT_NAME'] == 'INDEX':
+                for alias, official_name in index_alias_map.items():
+                    if row['SM_SYMBOL_NAME'] == official_name:
+                        id_map[alias] = (
+                            "NSE_INDEX", "INDEX", str(row['SEM_SMST_SECURITY_ID'])
+                        )
         return id_map
 
     def _make_request(self, method, endpoint, data=None):
