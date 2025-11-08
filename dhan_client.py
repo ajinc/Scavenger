@@ -37,10 +37,12 @@ class DhanClient:
         }
 
         for _, row in df.iterrows():
+            # Equities: Map "SYMBOL.NS" to security ID for NSE EQ series
             if row['SEM_INSTRUMENT_NAME'] == 'EQUITY' and row['SEM_EXM_EXCH_ID'] == 'NSE' and row['SEM_SERIES'] == 'EQ':
-                id_map[f"{row['SM_SYMBOL_NAME']}.NS"] = (
+                id_map[f"{row['SEM_TRADING_SYMBOL']}.NS"] = (
                     "NSE_EQ", "EQUITY", str(row['SEM_SMST_SECURITY_ID'])
                 )
+            # Indices: Map user-friendly aliases to security ID
             elif row['SEM_INSTRUMENT_NAME'] == 'INDEX':
                 for alias, official_name in index_alias_map.items():
                     if row['SM_SYMBOL_NAME'] == official_name:
